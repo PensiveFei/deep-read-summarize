@@ -3,10 +3,18 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.0] — 2026-08-18
 
 ### Added
-- Initial public release structure
+- 首个公开预发布版（pre-release）
+- 四种输入解析器插件：书籍/论文/视频/网页
+- 三波次 MapReduce 精读流水线
+- JSON Schema 结构化输出约束
+- 幂等缓存（lib/cache.js）
+- 失败分级（FATAL vs 可降级）
+- 质量校验循环
+- CI（lint + 测试 + Gitleaks 密钥扫描）
+- README/SECURITY/CONTRIBUTING/CHANGELOG 文档
 
 ## [3.0.0] — 2026-08-18
 

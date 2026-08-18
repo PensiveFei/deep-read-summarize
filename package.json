@@ -1,6 +1,6 @@
 {
   "name": "deep-read-summarize",
-  "version": "3.0.0",
+  "version": "0.1.0",
   "description": "Deep reading & summarization workflow for books/papers/videos/web with plugin parsers (DSH)",
   "main": "workflow.js",
   "scripts": {
