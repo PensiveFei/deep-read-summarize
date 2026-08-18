@@ -115,7 +115,9 @@ parsers: book, paper, video, web
     "fastMode": false,        // true 时跳过 5-7 节，速度快一些
     "maxChunks": 6,           // 分块上限，1-12
     "requireCitations": true, // 关键结论是否必须标注出处
-    "includeTimestamps": false
+    "includeTimestamps": false,
+    "outputDir": "./output",    // 笔记输出目录（可指向 Obsidian 仓库）
+    "tempDir": "./.tmp"        // 临时文件目录
   }
 }
 ```

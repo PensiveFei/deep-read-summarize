@@ -10,7 +10,7 @@ module.exports = {
   description: "学术论文解析器（arXiv/期刊/PDF/HTML）",
 
   buildPrompt: function (input, opts) {
-    const tempDir = opts.tempDir || "./_deepread_temp";
+    const tempDir = opts.tempDir || "./.tmp";
     const tempFile = tempDir + "\\input.txt";
     const maxChunks = opts.maxChunks || 6;
     return [

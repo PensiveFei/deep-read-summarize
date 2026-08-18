@@ -10,7 +10,7 @@ module.exports = {
   description: "视频解析器（YouTube/B站/播客 → 字幕 → 文本）",
 
   buildPrompt: function (input, opts) {
-    const tempDir = opts.tempDir || "./_deepread_temp";
+    const tempDir = opts.tempDir || "./.tmp";
     const tempFile = tempDir + "\\input.txt";
     const maxChunks = opts.maxChunks || 6;
     return [

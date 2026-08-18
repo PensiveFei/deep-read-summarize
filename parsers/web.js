@@ -10,7 +10,7 @@ module.exports = {
   description: "网页/文章解析器（正文提取 → 分块）",
 
   buildPrompt: function (input, opts) {
-    const tempDir = opts.tempDir || "./_deepread_temp";
+    const tempDir = opts.tempDir || "./.tmp";
     const tempFile = tempDir + "\\input.txt";
     const maxChunks = opts.maxChunks || 6;
     return [

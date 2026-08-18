@@ -12,7 +12,7 @@ module.exports = {
 
   // 构建「获取+分块」提示词
   buildPrompt: function (input, opts) {
-    const tempDir = opts.tempDir || "./_deepread_temp";
+    const tempDir = opts.tempDir || "./.tmp";
     const tempFile = tempDir + "\\input.txt";
     const maxChunks = opts.maxChunks || 6;
     return [
