@@ -1,0 +1,28 @@
+# The Little Fox and the Stars
+
+A public-domain style fable by the deep-read-summarize team (CC0 / self-authored for testing).
+
+## Chapter 1: The Forest
+
+Once there was a little fox named Pip who lived in a forest where the stars came down to drink from the river at midnight. Every night, Pip watched them shimmer and dance, and he wished he could join them.
+
+One evening, a star with a crooked tail stumbled onto the riverbank, too tired to fly back up. "Please," said the star, "help me reach the sky again."
+
+Pip thought for a moment. The star was heavy and the sky was far. But Pip remembered that the tallest tree in the forest touched the clouds on windy nights.
+
+## Chapter 2: The Climb
+
+Pip carried the star to the Great Oak and began to climb. The branches were slippery with dew, and twice the star nearly fell. "Hold tight," said Pip, "we are almost there."
+
+At the top, the wind blew strong and the sky opened wide. Pip lifted the star with all his strength, and the star floated up, glowing brighter with each heartbeat.
+
+## Chapter 3: The Promise
+
+"Come back tomorrow night," called the star, "and I will teach you how to shine."
+
+And Pip did. He learned that even the smallest fox can carry a little light, as long as he climbs one branch at a time.
+
+THE END
+
+---
+This fable was written solely for software testing and is released into the public domain (CC0).

@@ -1,0 +1,19 @@
+# cordis.yml — plugin tree example (one-click load in DSH-compatible environments)
+# Reference: https://github.com/cordiverse/cordis
+
+plugins:
+  deep-read-summarize:
+    path: ./workflow.js
+    config:
+      output_dir: "D:/Obsidian 仓库/PensiveFei/精读笔记"
+      temp_dir: _deepread_temp
+      default_options:
+        minWords: 2500
+        fastMode: false
+        maxChunks: 6
+        requireCitations: true
+  parsers:
+    book: ./parsers/book.js
+    paper: ./parsers/paper.js
+    video: ./parsers/video.js
+    web: ./parsers/web.js

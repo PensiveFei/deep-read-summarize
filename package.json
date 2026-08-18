@@ -1,0 +1,29 @@
+{
+  "name": "deep-read-summarize",
+  "version": "3.0.0",
+  "description": "Deep reading & summarization workflow for books/papers/videos/web with plugin parsers (DSH)",
+  "main": "workflow.js",
+  "scripts": {
+    "test": "node tests/run-tests.js",
+    "lint": "node scripts/lint.js",
+    "validate": "node tests/quick_validate.js && node scripts/security-check.js",
+    "security": "node scripts/security-check.js"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "workflow",
+    "summarization",
+    "obsidian",
+    "llm",
+    "subagent"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dsh": {
+    "lockedRuntime": "workflow tool semantics — see CHANGELOG.md",
+    "minVersion": "0.1.0",
+    "breakingPolicy": "re-validate with npm test after each DSH upgrade"
+  }
+}

@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build / temp
+dist/
+build/
+*.log
+.DS_Store
+
+# Deep-read temp artifacts (fetched content, chunk plans)
+_deepread_temp/
+*.tmp
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Test fixtures that contain real content (keep only public-domain/synthetic)
+tests/fixtures/copyrighted/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+desktop.ini
