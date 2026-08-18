@@ -10,7 +10,7 @@
     "security": "node scripts/security-check.js"
   },
   "keywords": [
-    "deepseek-harness",
+    "ds-harness",
     "workflow",
     "summarization",
     "obsidian",

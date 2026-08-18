@@ -18,6 +18,11 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Lint
         run: npm run lint
 

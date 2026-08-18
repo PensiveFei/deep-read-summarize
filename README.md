@@ -60,6 +60,48 @@ workflow.js      workflow 脚本本体（meta + script）
 
 ---
 
+## 快速开始（约 5 分钟）
+
+### 1. 安装
+
+```bash
+git clone https://github.com/<your-org>/deep-read-summarize.git
+cd deep-read-summarize
+npm install        # 无第三方依赖，仅初始化
+```
+
+### 2. 验证环境（离线，不需要任何 API key）
+
+```bash
+npm test           # 17 项 fixture 测试，全部离线跑通
+```
+
+看到 `TOTAL: 17 passed, 0 failed` 即环境就绪。
+
+### 3. 一行命令喂入 demo 文件
+
+```bash
+node -e "const wf = require('./workflow.js'); console.log('meta:', wf.meta.name); console.log('parsers:', wf.parsers.list().map(p => p.name).join(', '));"
+```
+
+输出类似：
+
+```
+meta: deep-read-summarize
+parsers: book, paper, video, web
+```
+
+### 4. 真实运行（需要 DSH workflow 工具）
+
+把下面的 JSON 传给 DSH 的 workflow 工具（见下节「用法」）：
+
+```jsonc
+{ "input": "https://arxiv.org/abs/2307.09042", "type": "paper", "options": { "maxChunks": 4, "fastMode": true } }
+```
+
+工作流会返回结构化结果：`{ ok, kind, title, filePath, qualityPassed, note }`，`note` 即最终 Markdown 笔记。
+
+---
 ## 用法
 
 把下面这段 JSON 传给 DSH 的 workflow 工具：

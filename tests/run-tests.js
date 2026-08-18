@@ -68,6 +68,12 @@ test('fixture fable.txt exists and is public-domain self-authored', () => {
   assert.ok(!fx.includes('Copyright ©'));
 });
 
+// ---------- Run cache tests ----------
+console.log('\n=== cache tests ===');
+const cacheResult = require('./cache.test.js');
+passed += cacheResult.passed;
+failed += cacheResult.failed;
+
 console.log('');
-console.log(passed + ' passed, ' + failed + ' failed');
+console.log('TOTAL: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
