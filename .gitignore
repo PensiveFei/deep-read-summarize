@@ -15,6 +15,10 @@ _deepread_temp/
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Test fixtures that contain real content (keep only public-domain/synthetic)
 tests/fixtures/copyrighted/
@@ -26,3 +30,7 @@ tests/fixtures/copyrighted/
 # OS
 Thumbs.db
 desktop.ini
+
+# Coverage
+coverage/
+.nyc_output/
