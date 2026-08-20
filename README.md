@@ -60,6 +60,24 @@ workflow.js      workflow 脚本本体（meta + script）
 
 ---
 
+## 安装（DSH 插件）
+
+deep-read-summarize 是 DSH 插件，可通过 dsh.so 生态或本地安装：
+
+```bash
+# 本地安装（dsh profile 目录）
+pnpm add ./deep-read-summarize-0.1.0.tgz
+# 然后在 dsh 配置的 dsh.profile.bundles 追加:
+#   - deep-read-summarize
+# 重启 dsh web 即可（POST /dsh-market/restart）
+```
+
+安装后自动注册：
+- `deep-read-summarize` workflow（meta + script）
+- `deep-read-summarize` 技能（`skills/deep-read-summarize/SKILL.md`）
+- 四种解析器（`parsers/`）与 JSON Schema（`schemas/`）
+
+---
 ## 快速开始（约 5 分钟）
 
 ### 1. 安装

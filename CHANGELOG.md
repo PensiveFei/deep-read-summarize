@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.1] — 2026-08-19
+
+### Added
+- DSH 插件化：cordis.patch.yml（bundle patch）、index.js 插件入口、skills/ 打包
+- node:test 风格测试（tests/index.test.js，`npm run test:node`）
+
+### Changed
+- package.json：dsh.bundle 字段、exports、repository、keywords 完善
+- 废弃 cordis.yml → 由 cordis.patch.yml 替代
+
 ## [0.1.0] — 2026-08-18
 
 ### Added
