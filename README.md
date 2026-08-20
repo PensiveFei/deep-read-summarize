@@ -60,6 +60,14 @@ workflow.js      workflow 脚本本体（meta + script）
 
 ---
 
+## dsh.so 生态
+
+本仓库带 `dsh-plugin` topic 和 `package.json` 的 `dsh` 字段，可被 dsh.so 注册表索引。
+
+dsh.so 收录要求：公开仓库、`dsh-plugin` topic（或 dsh 字段）、README 安装说明、SPDX 许可证（MIT）。
+提交后标记为 **Declared**（自声明兼容）；如果你实际使用并验证兼容，请在官方 Discussions 报告结果，这是唯一升 **Verified** 的途径。
+
+---
 ## 安装（DSH 插件）
 
 deep-read-summarize 是 DSH 插件，可通过 dsh.so 生态或本地安装：
