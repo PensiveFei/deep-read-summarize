@@ -1,29 +1,66 @@
 {
   "name": "deep-read-summarize",
   "version": "0.1.0",
-  "description": "Deep reading & summarization workflow for books/papers/videos/web with plugin parsers (DSH)",
-  "main": "workflow.js",
+  "description": "Deep reading & summarization for DSH: books/papers/videos/web → structured Obsidian notes. Plugin parsers, MapReduce deep-read, JSON Schema output, idempotent cache.",
+  "type": "commonjs",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./workflow": "./workflow.js",
+    "./parsers": "./parsers/index.js",
+    "./schemas": "./schemas/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "workflow.js",
+    "parsers",
+    "schemas",
+    "lib",
+    "skills",
+    "scripts",
+    "tests",
+    "docs",
+    "cordis.patch.yml",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    ".env.example"
+  ],
   "scripts": {
     "test": "node tests/run-tests.js",
     "lint": "node scripts/lint.js",
     "validate": "node tests/quick_validate.js && node scripts/security-check.js",
-    "security": "node scripts/security-check.js"
+    "security": "node scripts/security-check.js",
+    "test:node": "node --test tests/"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "lockedRuntime": "workflow tool semantics — see CHANGELOG.md",
+    "minVersion": "0.1.0",
+    "breakingPolicy": "re-validate with npm test after each DSH upgrade"
   },
   "keywords": [
-    "ds-harness",
+    "dsh",
+    "deepseek-harness",
     "workflow",
     "summarization",
+    "deep-read",
     "obsidian",
     "llm",
-    "subagent"
+    "subagent",
+    "mapreduce",
+    "parsers"
   ],
   "license": "MIT",
   "engines": {
     "node": ">=18"
   },
-  "dsh": {
-    "lockedRuntime": "workflow tool semantics — see CHANGELOG.md",
-    "minVersion": "0.1.0",
-    "breakingPolicy": "re-validate with npm test after each DSH upgrade"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PensiveFei/deep-read-summarize.git"
   }
 }

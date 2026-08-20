@@ -1,0 +1,22 @@
+# dsh bundle patch: inserts this plugin's loader entry into a profile layer.
+# Bundle patches add rows via `insert` blocks; top-level rows would be treated
+# as id-targeted overrides of EXISTING entries ("entry not found" otherwise).
+#
+# This plugin is a workflow + skill provider: it registers the deep-read-summarize
+# workflow (meta/script) and the filesystem skill, so users can deep-read books,
+# papers, videos and web pages into structured Obsidian notes.
+
+- insert:
+    - id: deep-read-summarize
+      name: 'deep-read-summarize'
+
+# All plugin config keys are optional; defaults are applied by the plugin.
+#   config:
+#     outputDir: './output'      # where notes are written (default: ./output)
+#     tempDir: './.tmp'          # temp files for chunked content (default: ./.tmp)
+#     minWords: 2500             # minimum output length
+#     fastMode: false            # skip sections 5-7 for speed
+#     maxChunks: 6               # chunk cap (1-12)
+#     requireCitations: true     # key conclusions must cite source location
+#     includeTimestamps: false   # video timestamps (off by default)
+#     cache: true                # idempotency cache on input fingerprint
