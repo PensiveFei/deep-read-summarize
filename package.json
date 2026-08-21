@@ -61,6 +61,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/PensiveFei/deep-read-summarize.git"
+    "url": "git+https://github.com/PensiveFei/deep-read-summarize.git"
   }
 }
