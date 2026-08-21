@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.1] — 2026-08-21
+
+### Fixed
+- 发布前检查：移除 README 中的本地 Obsidian 仓库绝对路径（改为参数化描述）
+- 移除 docs/RELEASE.md 中的本机绝对路径（改为通用写法）
+- README 同步版本号：tgz 0.2.0 → 0.3.0、测试 17 → 21 项
+
 ## [0.3.0] — 2026-08-21
 
 ### Added

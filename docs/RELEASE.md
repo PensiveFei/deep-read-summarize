@@ -35,14 +35,14 @@
 ## npm 发布流程（v0.2.0 起）
 
 ```bash
-cd <椤圭洰鐩綍>
+cd <项目目录>
 npm run lint && npm test && npm run validate   # 先本地全绿
 npm pkg fix                                   # 规范化 package.json（npm 建议）
 npm publish                                   # prepublishOnly 自动跑门禁（测试+lint+安全）
 npm view deep-read-summarize --prefer-online  # 验证线上（注意：发布后首次查询可能 404，索引有延迟）
 ```
 
-- token 存在用户级 ~/.npmrc（//registry.npmjs.org/:_authToken=...），npm whoami 可验证
+- token 配置在用户级 ~/.npmrc 的 npm registry 认证条目（npm whoami 可验证）
 - 本沙箱环境 npm 默认缓存目录可能被拒（EPERM），用 npm publish --cache <工作区内目录>
 - 版本号：功能增强 → minor（0.x → 0.y）；修复 → patch；不兼容 → major
 

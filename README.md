@@ -77,7 +77,7 @@ deep-read-summarize 是 DSH 插件，可通过 npm、dsh.so 生态或本地安�
 npm install deep-read-summarize
 
 # 或本地安装（dsh profile 目录）
-pnpm add ./deep-read-summarize-0.2.0.tgz
+pnpm add ./deep-read-summarize-0.3.0.tgz
 # 然后在 dsh 配置的 dsh.profile.bundles 追加:
 #   - deep-read-summarize
 # 重启 dsh web 即可（POST /dsh-market/restart）
@@ -106,10 +106,10 @@ npm install        # 无第三方依赖，仅初始化
 ### 2. 验证环境（离线，不需要任何 API key）
 
 ```bash
-npm test           # 17 项 fixture 测试，全部离线跑通
+npm test           # 21 项 fixture 测试，全部离线跑通
 ```
 
-看到 `TOTAL: 17 passed, 0 failed` 即环境就绪。
+看到 `TOTAL: 21 passed, 0 failed` 即环境就绪。
 
 ### 3. 一行命令喂入 demo 文件
 
@@ -160,11 +160,11 @@ parsers: book, paper, video, web
 | 类型 | input |
 |------|-------|
 | 论文 | `https://arxiv.org/abs/2307.09042` |
-| 书籍 | `~/books/xxx.pdf` |
+| 书籍 | 本地路径，如 `~/books/xxx.pdf` |
 | 视频 | `https://youtube.com/watch?v=xxx` |
 | 网页 | `https://example.com/article` |
 
-输出写到 `D:/Obsidian 仓库/PensiveFei/精读笔记/<标题>.md`，路径在 `workflow.js` 里可以改。
+笔记写到 `options.outputDir` 指定的目录（默认 `./output`，可指向你的 Obsidian 仓库），文件名取自内容标题。
 
 视频字幕需要本机装 yt-dlp（`winget install yt-dlp.yt-dlp`）。没装也不影响其他类型；抓不到字幕时工作流会提示你手动提供转写文本。
 
