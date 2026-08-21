@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.0] — 2026-08-21
+
+### Added
+- 首次发布到 npm registry（`npm install deep-read-summarize`），含此前未发布的 0.1.1 变更
+- prepublishOnly 质量门禁：发布前自动跑 17 项测试 + lint + 安全检查
+
+### Changed
+- package.json version 对齐 git tag（0.1.0 → 0.2.0）
+- keywords 移除 `deepseek-harness` 商标词（安全合规要求，与 v0.1.0 决策一致）
+- README 补充 npm 安装方式
+
+### Fixed
+- git 历史整理：以本地完整开发历史为准 force push 覆盖 API 拼凑历史，补上缺失的 `.github/workflows/ci.yml`
+
 ## [0.1.1] — 2026-08-19
 
 ### Added

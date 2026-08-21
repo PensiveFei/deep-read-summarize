@@ -70,11 +70,14 @@ dsh.so 收录要求：公开仓库、`dsh-plugin` topic（或 dsh 字段）、RE
 ---
 ## 安装（DSH 插件）
 
-deep-read-summarize 是 DSH 插件，可通过 dsh.so 生态或本地安装：
+deep-read-summarize 是 DSH 插件，可通过 npm、dsh.so 生态或本地安装：
 
 ```bash
-# 本地安装（dsh profile 目录）
-pnpm add ./deep-read-summarize-0.1.0.tgz
+# npm 安装（已发布到 registry，无第三方依赖）
+npm install deep-read-summarize
+
+# 或本地安装（dsh profile 目录）
+pnpm add ./deep-read-summarize-0.2.0.tgz
 # 然后在 dsh 配置的 dsh.profile.bundles 追加:
 #   - deep-read-summarize
 # 重启 dsh web 即可（POST /dsh-market/restart）
@@ -91,6 +94,10 @@ pnpm add ./deep-read-summarize-0.1.0.tgz
 ### 1. 安装
 
 ```bash
+# 方式 A：npm 直接安装（无需 clone）
+npm install deep-read-summarize
+
+# 方式 B：从源码开发
 git clone https://github.com/<your-org>/deep-read-summarize.git
 cd deep-read-summarize
 npm install        # 无第三方依赖，仅初始化
