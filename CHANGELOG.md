@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] — 2026-08-21
+
+### Added
+- 幂等缓存 URL 规范化（normalizeInput）：host 大小写 / 默认端口 / fragment / 尾部斜杠归一，同一 URL 不同写法共享指纹
+- 安全扫描覆盖 .env.example 与 forward-slash 用户路径；导出 scanDir 供测试调用
+- 测试 17 → 21：parser 模板回归、URL 规范化、安全扫描正/负样本
+
+### Changed
+- parsers 四解析器去重：抽取共享提示词模板 parsers/_prompt.js（buildPrompt 输出逐字不变，经新旧对比验证）
+- lint 排除 .tmp*/dist/coverage 等临时目录
+- CI 增加 Node 18/20/22 版本矩阵
+- package.json 增加 publishConfig.access=public（显式公开发布）
+- docs/RELEASE.md 增加 npm 发布流程与版本速览；README 开发节补充发布门禁说明
+
+### Fixed
+- security-check 对测试样本误报（样本改为拼接构造，源码不含完整密钥模式）
+
 ## [0.2.0] — 2026-08-21
 
 ### Added

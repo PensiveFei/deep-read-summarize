@@ -27,6 +27,20 @@ test('fingerprint differs for different inputs', () => {
   assert.notStrictEqual(a, b);
 });
 
+test('fingerprint normalizes URL variants', () => {
+  const a = cache.fingerprint('https://EXAMPLE.com/doc/');
+  const b = cache.fingerprint('https://example.com/doc#frag');
+  assert.strictEqual(a, b, 'URL variants (case/slash/fragment) should share fingerprint');
+  const c = cache.fingerprint('https://example.com/doc?x=1');
+  assert.notStrictEqual(a, c, 'different query should produce different fingerprint');
+});
+
+test('normalizeInput keeps non-URL input and root path unchanged', () => {
+  assert.strictEqual(cache.normalizeInput('C:\\Users\\x\\doc.md'), 'C:\\Users\\x\\doc.md');
+  assert.strictEqual(cache.normalizeInput('https://example.com/'), 'https://example.com/');
+  assert.strictEqual(cache.normalizeInput('   '), '');
+});
+
 test('fingerprint includes file meta for local files', () => {
   const f = path.join(tmp, 'sample.txt');
   fs.mkdirSync(tmp, { recursive: true });

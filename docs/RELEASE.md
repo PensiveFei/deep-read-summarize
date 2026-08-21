@@ -32,12 +32,27 @@
 
 ---
 
+## npm 发布流程（v0.2.0 起）
+
+```bash
+cd <椤圭洰鐩綍>
+npm run lint && npm test && npm run validate   # 先本地全绿
+npm pkg fix                                   # 规范化 package.json（npm 建议）
+npm publish                                   # prepublishOnly 自动跑门禁（测试+lint+安全）
+npm view deep-read-summarize --prefer-online  # 验证线上（注意：发布后首次查询可能 404，索引有延迟）
+```
+
+- token 存在用户级 ~/.npmrc（//registry.npmjs.org/:_authToken=...），npm whoami 可验证
+- 本沙箱环境 npm 默认缓存目录可能被拒（EPERM），用 npm publish --cache <工作区内目录>
+- 版本号：功能增强 → minor（0.x → 0.y）；修复 → patch；不兼容 → major
+
 ## 当前版本速览
 
 | 版本 | 状态 | 说明 |
 |------|------|------|
-| v0.1.x | pre-release | 早期迭代，接口可能变 |
-| v1.0.0 | 首个稳定版 | API 稳定后才发 |
+| v0.1.0/v0.1.1 | git tag | 早期迭代，未上 npm |
+| v0.2.x | npm 已发布 | 首个 npm 版本，含发布门禁 |
+| v1.0.0 | 计划 | API 稳定后发布 |
 
 > 早期迭代用 0.x 表达不稳定；API 稳定后再发 1.0.0。
 > Tag 发布后保持稳定，出问题发修复版，不要反复改同一个 Tag。

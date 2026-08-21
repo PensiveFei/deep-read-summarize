@@ -1,6 +1,7 @@
 // tests/run-tests.js — fixture-driven tests
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 let passed = 0, failed = 0;
@@ -30,6 +31,16 @@ test('every parser builds a non-empty prompt', () => {
     const p = parsers.resolve(type);
     const prompt = p.buildPrompt('https://example.com/x', { tempDir: '/tmp', tempFile: '/tmp/in.txt', maxChunks: 4 });
     assert.ok(typeof prompt === 'string' && prompt.length > 50, p.name + ' prompt too short');
+  }
+});
+
+test('parser prompts embed input, tempFile and maxChunks', () => {
+  for (const type of ['book', 'paper', 'video', 'web']) {
+    const p = parsers.resolve(type);
+    const prompt = p.buildPrompt('https://x.test/doc', { tempDir: '/t', maxChunks: 4 });
+    assert.ok(prompt.includes('https://x.test/doc'), type + ': input missing');
+    assert.ok(prompt.includes('/t\\input.txt') || prompt.includes('/t/input.txt'), type + ': tempFile missing');
+    assert.ok(prompt.includes('块数不超过 4 块'), type + ': maxChunks not applied');
   }
 });
 
@@ -66,6 +77,25 @@ test('fixture fable.txt exists and is public-domain self-authored', () => {
   const fx = fs.readFileSync(path.join(__dirname, 'fixtures/fable.txt'), 'utf8');
   assert.ok(fx.includes('released into the public domain'));
   assert.ok(!fx.includes('Copyright ©'));
+});
+
+// ---------- Test: security scanner (negative/positive samples) ----------
+const { scanDir } = require('../scripts/security-check');
+test('security scanner flags fake secrets and skips clean/ignored files', () => {
+  const t = fs.mkdtempSync(path.join(os.tmpdir(), 'drs-sec-'));
+  try {
+    // 拼接构造，避免源码中出现完整密钥模式（被 security-check 误报）
+    fs.writeFileSync(path.join(t, 'bad.js'), 'const key = "' + 'sk-' + 'abcdefghijklmnopqrstuvwxyz123";');
+    fs.writeFileSync(path.join(t, 'good.md'), '# clean\nno secrets here\n');
+    fs.mkdirSync(path.join(t, 'node_modules'));
+    fs.writeFileSync(path.join(t, 'node_modules', 'dep.js'), 'sk-' + 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    const issues = scanDir(t);
+    assert.ok(issues.some(i => i.includes('OpenAI-style key')), 'should flag fake key');
+    assert.ok(!issues.some(i => i.includes('good.md')), 'clean file should not be flagged');
+    assert.ok(!issues.some(i => i.includes('node_modules')), 'node_modules should be skipped');
+  } finally {
+    fs.rmSync(t, { recursive: true, force: true });
+  }
 });
 
 // ---------- Run cache tests ----------

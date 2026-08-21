@@ -198,9 +198,11 @@ parsers: book, paper, video, web
 ```bash
 npm install
 npm run lint       # node --check 全部 JS
-npm test           # fixture 测试
+npm test           # fixture 测试（21 项，全部离线）
 npm run validate   # 发布前验证（含安全检查）
 ```
+
+npm publish 会自动先跑 prepublishOnly（测试 + lint + 安全检查），任何一项失败都不会发布。
 
 改动说明见 CHANGELOG.md，贡献规范见 CONTRIBUTING.md。
 
