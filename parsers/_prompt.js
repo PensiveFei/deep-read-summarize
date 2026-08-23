@@ -24,7 +24,7 @@
 function buildFetchPrompt(cfg) {
   const opts = cfg.opts || {};
   const tempDir = opts.tempDir || "./.tmp";
-  const tempFile = tempDir + "\\input.txt";
+  const tempFile = opts.tempFile || (tempDir.replace(/[\\/]+$/, "") + "/input.txt");
   const maxChunks = opts.maxChunks || 6;
   const steps = (cfg.steps || []).map(function (s, i) { return (i + 1) + ". " + s; });
   return [

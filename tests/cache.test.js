@@ -74,6 +74,24 @@ test('corrupted line is skipped', () => {
   assert.ok(map.size >= 1, 'should still read valid lines');
 });
 
+test('hasProcessed TTL: stale record is treated as unprocessed', () => {
+  const key = cache.fingerprint('https://example.com/stale');
+  cache.markProcessed(cacheFile, key, '/tmp/stale.md', { ts: '2020-01-01T00:00:00.000Z' });
+  assert.strictEqual(cache.hasProcessed(cacheFile, key), true, 'no TTL -> still processed');
+  assert.strictEqual(cache.hasProcessed(cacheFile, key, { maxAgeMs: 60 * 1000 }), false, 'stale -> unprocessed');
+  assert.strictEqual(cache.hasProcessed(cacheFile, key, { maxAgeMs: 1e12 }), true, 'recent enough -> processed');
+});
+
+test('markProcessed tolerates unwritable cache location', () => {
+  const blocker = path.join(tmp, 'blocked-file');
+  fs.writeFileSync(blocker, 'x');
+  const badFile = path.join(blocker, 'cache.jsonl');
+  let threw = false, ret = null;
+  try { ret = cache.markProcessed(badFile, 'some-key', '/out.md'); } catch (e) { threw = true; }
+  assert.strictEqual(threw, false, 'should not throw');
+  assert.strictEqual(ret, false, 'should report failure instead');
+});
+
 // cleanup
 fs.rmSync(tmp, { recursive: true, force: true });
 
