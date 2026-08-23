@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.2] — 2026-08-23
+
+### Fixed
+- parsers/_prompt.js：目标文件路径优先使用调用方传入的 `tempFile`，回退路径统一正斜杠，修复 macOS/Linux 上硬编码 Windows 反斜杠导致的路径错误（issue #1，由 DSH 代码审查发现）
+- lib/cache.js：`markProcessed` 写缓存失败不再抛错中断主流程（降级为告警并返回 false）；`hasProcessed` 支持可选 TTL（`maxAgeMs`）过期判定（issue #2，由 DSH 代码审查发现）
+
 ## [0.3.1] — 2026-08-21
 
 ### Fixed
