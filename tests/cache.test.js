@@ -35,6 +35,22 @@ test('fingerprint normalizes URL variants', () => {
   assert.notStrictEqual(a, c, 'different query should produce different fingerprint');
 });
 
+test('fingerprint normalizes trailing empty query (doc vs doc?)', () => {
+  const a = cache.fingerprint('https://example.com/doc');
+  const b = cache.fingerprint('https://example.com/doc?');
+  assert.strictEqual(a, b, 'trailing "?" (empty query) should not create a distinct fingerprint');
+  assert.strictEqual(cache.normalizeInput('https://example.com/doc?'), 'https://example.com/doc');
+});
+
+test('fingerprint keeps size 0 distinct from absent meta', () => {
+  // 空文件（size=0）与「无 meta」不应共享指纹；0 值必须参与拼接
+  const zero = cache.fingerprint('path-to-empty-file', { size: 0, mtimeMs: 123 });
+  const absent = cache.fingerprint('path-to-empty-file');
+  assert.notStrictEqual(zero, absent, 'size=0 must not collapse into absent meta');
+  const five = cache.fingerprint('path-to-empty-file', { size: 5, mtimeMs: 123 });
+  assert.notStrictEqual(zero, five, 'size 0 vs 5 must differ');
+});
+
 test('normalizeInput keeps non-URL input and root path unchanged', () => {
   assert.strictEqual(cache.normalizeInput('C:\\Users\\x\\doc.md'), 'C:\\Users\\x\\doc.md');
   assert.strictEqual(cache.normalizeInput('https://example.com/'), 'https://example.com/');

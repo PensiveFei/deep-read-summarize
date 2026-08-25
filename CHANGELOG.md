@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.3] — 2026-08-25
+
+### Fixed
+- lib/cache.js：URL 归一化真正去掉尾部空 query（`doc` 与 `doc?` 现在共享指纹；此前 `url.search === "?"` 是死代码，`doc?` 会生成不同指纹导致幂等缓存失效）
+- lib/cache.js：`fingerprint` 用 `??` 替代 `||`，空文件（size=0）不再与「无 meta」混淆
+- workflow.js：`tempFile` 拼接先去掉 `tempDir` 尾部斜杠，避免 `./.tmp//input.txt` 双斜杠路径（与 parsers/_prompt.js 的 0.3.2 修复对齐）
+- tests：+2 用例（URL 尾部 `?` 归一、size=0 指纹区分），25/25 通过；均由 DSH 代码审查发现
+
 ## [0.3.2] — 2026-08-23
 
 ### Fixed
