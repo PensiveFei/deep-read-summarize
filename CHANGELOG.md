@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.4] — 2026-08-28
+
+### Fixed
+- **DSH rc7（Cordis）兼容修复**：插件入口改为标准 Cordis 插件契约（导出 `name` + `inject: ['skills']` + `apply(ctx)`），apply 时将自带 SKILL.md 注册为运行时技能（含 workflow meta + 自包含 script + args 示例），修复 0.3.3 在 rc7 上「invalid plugin / 插件树加载失败 / harness 无法启动」的问题（旧入口只导出 load/workflow/parsers/schemas，无 apply）。
+- **workflow script 自包含**：四个解析器（book/paper/video/web）的 `buildPrompt` 及其依赖的 `buildFetchPrompt` 在构建时内联进 script（修正内联后的 `prompt` 闭包引用），不再依赖宿主注入 `args._parsers`（rc7 的 workflow 工具只暴露 args JSON，不会注入）；保留 `args._parsers` 回退（宿主注入时优先）。
+- 旧的 `load()` 接口保留以兼容旧式读取；minVersion 0.1.0。
+
 ## [0.3.3] — 2026-08-25
 
 ### Fixed

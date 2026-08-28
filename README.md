@@ -83,7 +83,7 @@ deep-read-summarize 是 DSH 插件，可通过 npm、dsh.so 生态或本地安�
 npm install deep-read-summarize
 
 # 或本地安装（dsh profile 目录）
-pnpm add ./deep-read-summarize-0.3.3.tgz
+pnpm add ./deep-read-summarize-0.3.4.tgz
 # 然后在 dsh 配置的 dsh.profile.bundles 追加:
 #   - deep-read-summarize
 # 重启 dsh web 即可（POST /dsh-market/restart）
