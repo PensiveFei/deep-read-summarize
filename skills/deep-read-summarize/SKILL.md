@@ -59,8 +59,16 @@ status: 已完成
 
 ## 视频说明
 
-- 优先 yt-dlp 抓字幕（`winget install yt-dlp.yt-dlp`）
-- 抓不到时提示用户手动提供转写文本
+- **统一流水线（去三档）**：目标 = 拿到完整逐字稿再精读。
+  1. **有平台字幕**（B站 AI 字幕 / YouTube CC / yt-dlp CC）→ 直接用字幕（=全文，最快、零依赖）。
+  2. **无公开字幕** → 用插件自带转写（`scripts/transcribe.ps1`：faster-whisper small / int8 / VAD）得到全文。
+  3. 都不行 → 降级提示用户手动提供转写文本，或退回 desc 作背景；**绝不阻塞、绝不自动装重依赖**。
+- `options.transcribe`：**默认 true**（无字幕自动转写）；设为 `false` 则跳过转写（只用字幕/desc 或降级）。
+- **转写工具链**：脚本自举，本机/用户一致——`uv` 建 Python 3.12 环境 + 清华镜像装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并缓存；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**。
+- **⚠️ 首次转写会先下载 small 模型（约 484MB，hf-mirror，非 GitHub），可能较慢**——执行转写前**先向用户说明**这是正常的一次性下载，之后缓存复用、秒开；不要当成卡死而中断。
+- **质量/速度**：small/int8 + VAD 静音过滤，中文质量可用且 CPU 友好；有字幕视频不转写（快）。装不上/失败则降级，不静默。
+- YouTube 用 yt-dlp 抓 CC；未装时**绝不下载 exe 二进制**（GitHub 直连易卡死），改用 winget/pip；仍不可用则转写或降级。
+- 运行 yt-dlp 加 `--socket-timeout 15 --retries 3` 防超时。
 - 默认不标时间戳（`options.includeTimestamps` 可开）
 
 ## 参考

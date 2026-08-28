@@ -3,7 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.3.4] — 2026-08-28
+## [0.3.6] — 2026-08-28
+
+### Added
+- **统一视频转写工具 `scripts/transcribe.ps1`（关键）**：自举 faster-whisper（`uv` 建 Python 3.11 环境 + 清华镜像安装 + `HF_ENDPOINT=https://hf-mirror.com` 下模型并缓存），small/int8/VAD；**本机与用户使用一致**（只依赖环境变量与标准路径），无需单独 ffmpeg（faster-whisper 内置 PyAV 解码）。
+
+### Fixed
+- **视频解析器 yt-dlp 防卡死**：未装 yt-dlp 时**绝不下载 exe 二进制**（GitHub 直连易卡死），改用 `winget install yt-dlp.yt-dlp` 或 `pip install -U yt-dlp -i 镜像`；并加 `--socket-timeout 15 --retries 3` 防超时。
+- **workflow 精读防超时中止**：`maxChunks` 默认 6→4、`maxRetries` 默认 1→0；波次2「并行精读」改为**分批并行**（每批 3 个块），降低子代理数与单次调用时长。
+
+### Changed
+- **`parsers/video.js` 统一流水线（去三档）**：目标 = 拿到**完整逐字稿**再精读。① 有平台字幕（B站 AI 字幕 / YouTube CC / yt-dlp CC）→ 直接用字幕（快、零依赖）；② 无公开字幕 → 用 `scripts/transcribe.ps1` 转写得到全文；③ 都不行 → 降级提示人工转写文本，或退回 desc 作背景；**绝不阻塞、绝不自动装重依赖**。
+- **`options.transcribe` 默认 true**（无字幕自动走本地转写），`false` 则跳过转写。
+- **textSource** 标注实际来源：`subtitle / transcription / desc / manual`；来源信息**透出在运行日志 `[source] …` 与返回结果 `textSource`，不写进笔记**（保持笔记美观）。
+- `SKILL.md` / `README.md` 同步为「完整逐字稿（字幕优先，无字幕自动转写）」策略与效果预估。
 
 ### Fixed
 - **DSH rc7（Cordis）兼容修复**：插件入口改为标准 Cordis 插件契约（导出 `name` + `inject: ['skills']` + `apply(ctx)`），apply 时将自带 SKILL.md 注册为运行时技能（含 workflow meta + 自包含 script + args 示例），修复 0.3.3 在 rc7 上「invalid plugin / 插件树加载失败 / harness 无法启动」的问题（旧入口只导出 load/workflow/parsers/schemas，无 apply）。
