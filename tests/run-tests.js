@@ -79,6 +79,34 @@ test('fixture fable.txt exists and is public-domain self-authored', () => {
   assert.ok(!fx.includes('Copyright ©'));
 });
 
+// ---------- Test: plugin entry contract (Cordis) ----------
+// Regression for 0.3.3: the entry exported only { load, workflow, parsers,
+// schemas } - no apply method - so dsh rejected the plugin at startup
+// ("invalid plugin, expect function or object with an \"apply\" method"),
+// the web server exited immediately, and the launcher just sat waiting on a
+// dead port. The entry must satisfy the Cordis contract, always.
+const plugin = require('../index');
+
+test('plugin entry satisfies the Cordis contract (function or object with apply)', () => {
+  const ok = typeof plugin === 'function' ||
+    (plugin && typeof plugin === 'object' && typeof plugin.apply === 'function');
+  assert.ok(ok, 'entry must be a function or an object with an apply method');
+  assert.ok(typeof plugin.apply === 'function', 'apply must be callable');
+});
+
+test('plugin entry carries name + inject for the bundle row', () => {
+  assert.ok(typeof plugin.name === 'string' && plugin.name !== '', 'name must be a non-empty string');
+  assert.ok(Array.isArray(plugin.inject) && plugin.inject.every((s) => typeof s === 'string'),
+    'inject must be an array of strings');
+});
+
+test('plugin entry keeps the legacy load/workflow/parsers exports', () => {
+  assert.ok(typeof plugin.load === 'function', 'legacy load() export missing');
+  assert.ok(plugin.workflow && plugin.workflow.meta, 'workflow export missing');
+  assert.ok(plugin.parsers && typeof plugin.parsers.resolve === 'function', 'parsers export missing');
+  assert.ok(plugin.schemas, 'schemas export missing');
+});
+
 // ---------- Test: security scanner (negative/positive samples) ----------
 const { scanDir } = require('../scripts/security-check');
 test('security scanner flags fake secrets and skips clean/ignored files', () => {
