@@ -1,6 +1,6 @@
 {
   "name": "deep-read-summarize",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Deep reading & summarization for DSH: books/papers/videos/web → structured Obsidian notes. Plugin parsers, MapReduce deep-read, JSON Schema output, idempotent cache.",
   "type": "commonjs",
   "main": "index.js",
@@ -20,7 +20,8 @@
     "skills",
     "scripts",
     "tests",
-    "docs",
+    "docs/RELEASE.md",
+    "docs/RELEASE-v0.1.0.md",
     "cordis.patch.yml",
     "CHANGELOG.md",
     "README.md",
@@ -33,7 +34,7 @@
     "lint": "node scripts/lint.js",
     "validate": "node tests/quick_validate.js && node scripts/security-check.js",
     "security": "node scripts/security-check.js",
-    "test:node": "node --test tests/",
+    "test:node": "node --test",
     "prepublishOnly": "node tests/run-tests.js && node scripts/lint.js && node scripts/security-check.js"
   },
   "dsh": {

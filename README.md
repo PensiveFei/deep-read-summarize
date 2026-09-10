@@ -19,6 +19,20 @@
 
 ---
 
+## 实际效果
+
+（图用 GitHub 绝对地址，npm 页面同样能显示；图片本身不打进 npm 包，只随仓库分发）
+
+| 精读论文 | 视频笔记（元信息） |
+| --- | --- |
+| ![论文精读笔记](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-paper-note-cot.png) | ![视频笔记元信息](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-video-note-metadata.png) |
+
+| 视频笔记（行动要点） | 会话内摘要 |
+| --- | --- |
+| ![视频笔记行动要点](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-video-note-actions.png) | ![会话内摘要](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-in-chat-digest.png) |
+
+---
+
 ## 能做什么
 
 - 书籍（PDF/EPUB/MOBI）、论文（arXiv/PDF/HTML）、视频（**字幕优先，无字幕自动转写**，出品完整逐字稿精读）、网页
@@ -143,6 +157,8 @@ parsers: book, paper, video, web
 ```
 
 工作流会返回结构化结果：`{ ok, kind, title, filePath, qualityPassed, note }`，`note` 即最终 Markdown 笔记。
+
+> ⚠️ **笔记由主代理落盘**：DSH 的 workflow 契约规定脚本只能协调子代理（沙箱内没有文件系统），所以脚本只返回 `note` 正文与建议路径 `filePath`，**不会自己写文件**。插件自带的 SKILL.md 已明确要求模型在拿到结果后用 `write` 工具写入 `filePath`——自己拼 workflow 调用时也要记得这一步，否则笔记只存在于返回值里。
 
 ---
 ## 用法
@@ -273,12 +289,19 @@ npm publish 会自动先跑 prepublishOnly（测试 + lint + 安全检查），�
 
 ## 兼容性
 
-DSH 还在快速迭代，有过破坏性变更。本仓库的依赖面是：
+**已验证的宿主：DSH 0.1.2-rc.1**（Node 24）。本仓库的依赖面只有两处：
 
-- workflow 工具的 `agent()`、`parallel()`、`phase()`、`log()`、`args`
-- JSON Schema 子集：`type / properties / required / additionalProperties / items / enum / const / oneOf`
+| 依赖面 | 现行契约 | 本仓库的用法 |
+| --- | --- | --- |
+| workflow 脚本钩子 | `agent()` / `pipeline()` / `parallel()` / `phase()` / `log()` / `args` | 只用了 `agent/parallel/phase/log/args`；`agent()` 选项只用 `label/phase/schema`（引擎只接受 `label/phase/schema/provider/model`，其它选项会被判为 fatal） |
+| JSON Schema 子集 | `type / properties / required / additionalProperties / items / enum / const / oneOf` + 注解键 | 两个 `agent()` schema 已用宿主真实的 `assertObjectJsonSchema` 实测通过 |
 
-升级 DSH 后先跑一遍 `npm test`。如果坏了，对照 CHANGELOG.md 里的版本记录排查。
+两点容易踩的契约细节：
+
+- **脚本沙箱没有文件系统/网络/定时器/require**——只能协调子代理；笔记落盘由主代理完成（见上文 ⚠️）。
+- **违反上述子集不是降级而是终止**：引擎抛 `UNSUPPORTED_SCHEMA`，整条 workflow 直接失败。仓库的 `npm test` 里有对应回归（含反向断言，确保校验器不是空放行）。
+
+升级 DSH 后先跑 `npm test` + `npm run test:node`；坏了对照 CHANGELOG.md 排查。
 
 ---
 

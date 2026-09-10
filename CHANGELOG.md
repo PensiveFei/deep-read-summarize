@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.7] — 2026-09-09
+
+针对 **DSH 0.1.2-rc.1** 的一轮兼容性核查与打磨（对使用者无破坏性变更）。
+
+### Fixed
+
+- **笔记落盘步骤缺失（最容易丢数据的一条）**：SKILL.md 写「默认写到 `./output/`」，但 DSH 的 workflow 契约规定脚本只能协调子代理——**沙箱内没有文件系统**，脚本实际只返回 `{ filePath, note }`。照原文档执行，模型会以为文件已经写好，笔记只存在于返回值里。现在 SKILL.md 新增明确的第 8 步「用 `write` 工具把 `note` 写入 `filePath`」，两版 README 同步说明。
+- **`npm run test:node` 在 Node 24 上直接失败**：`node --test tests/` 在该版本会把 `tests/` 当模块解析（`MODULE_NOT_FOUND`）。改为 `node --test`（自动发现）。
+- **CI 从不运行 `tests/index.test.js`**：里面正是 0.3.3 事故（入口缺 `apply()` → 宿主拒绝启动）的 Cordis 契约回归测试，却因为只在 `node --test` 下跑而从未被执行。CI 新增该步骤，矩阵补上 **Node 24**（宿主实际运行版本）。
+
+### Changed
+
+- **npm 包不再携带 docs 截图**：`files` 由整个 `docs/` 收窄为两份 RELEASE 文档。0.3.6 发布之后仓库才提交的 4 张 showcase 图（合计约 1.14MB）会让下次发版的 tarball 从 99KB 涨到 1.1MB；现在回到约 100KB。图片仍随仓库分发，README 改用 GitHub 绝对地址引用（npm 页面照常显示），顺带把一直没有被任何文档引用的演示图补进 README。
+- **技能 `source` 改为 `bundled`**：该字段是技能的「来源桶」（`runtime`/`bundled`/`user-dsh`…），此前填的是自由描述 `plugin:deep-read-summarize`。
+- README/README.en.md 的「兼容性」节改写为：已验证宿主（DSH 0.1.2-rc.1）+ 依赖面表格 + 两条契约细节（沙箱无文件系统；违反 schema 子集是**终止**而非降级）。
+- `.gitignore` 增加 `*.tgz`（本地 pack 产物不再出现在 `git status`）。
+
+### Added
+
+- **workflow 契约回归测试（零依赖）**：schema 子集递归校验（含反向断言，确保校验器不会空放行）、`agent()` 选项白名单、沙箱禁用 API（`require`/`fs`/`process`/`fetch`/定时器）扫描、脚本四解析器自包含、技能内容包含 meta + script + args 与落盘步骤、插件 Cordis 契约 + 技能登记行为。测试 28 → **35**。
+
+### Compatibility
+
+- 实测证据（0.1.2-rc.1）：两个 `agent()` schema 用宿主真实的 `assertObjectJsonSchema` 校验**通过**，对照用例 `minLength` 被拒（证明校验器有效、不是空放行）；脚本只使用 `agent/parallel/phase/log/args`；`agent()` 失败返回 `null` 已被脚本正确处理。
+- 未改动 workflow 脚本本身与解析器行为；本次修复集中在「落盘契约、测试与 CI、打包体积、文档准确性」。
+
 ## [0.3.6] — 2026-08-28
 
 ### Added

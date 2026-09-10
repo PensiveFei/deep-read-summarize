@@ -20,7 +20,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 ## 输入
 
 用户提供：内容链接或本地文件路径。
-可选参数：`type`（auto/book/paper/video/web）、`options`（minWords/fastMode/maxChunks/requireCitations/includeTimestamps/outputDir）。
+可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / cache / outputDir / tempDir）。
 
 ## 执行步骤
 
@@ -31,10 +31,13 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 5. **波次2 并行精读**：每个分块一个子代理深度精读（Map）
 6. **波次3 合并成稿**：整合为完整笔记（Reduce），内嵌质量自检
 7. **质量校验**：可选重试（maxRetries），检查覆盖度/引用真实性/术语一致/格式完整/篇幅/语言
+8. **落盘（必须，别跳过）**：workflow 工具只返回 `note`（笔记正文）与 `filePath`（建议路径）——**脚本本身没有文件系统权限**。拿到结果后要用 `write` 工具把 `note` 原样写入 `filePath`（目录不存在就先创建）；不写就等于笔记丢了，用户只会看到一段返回文本
 
 ## 输出
 
-Markdown 笔记（默认写到 `./output/`，可用 `options.outputDir` 指向 Obsidian 仓库）
+workflow 返回 `{ ok, filePath, note, qualityPassed, qualityIssues, failedChunks, textSource }`。
+
+> ⚠️ **`note` 就是完整笔记正文，`filePath` 只是建议路径**：脚本运行在无文件系统的沙箱里（DSH 的 workflow 契约：脚本只负责协调子代理），**它不会替你写文件**。必须由你（主代理）在拿到结果后用 `write` 工具把它写到 `filePath`——默认 `./output/`，可用 `options.outputDir` 指向 Obsidian 仓库。
 
 ```markdown
 ---
@@ -69,6 +72,7 @@ status: 已完成
 - **质量/速度**：small/int8 + VAD 静音过滤，中文质量可用且 CPU 友好；有字幕视频不转写（快）。装不上/失败则降级，不静默。
 - YouTube 用 yt-dlp 抓 CC；未装时**绝不下载 exe 二进制**（GitHub 直连易卡死），改用 winget/pip；仍不可用则转写或降级。
 - 运行 yt-dlp 加 `--socket-timeout 15 --retries 3` 防超时。
+- **平台限制**：无字幕自动转写依赖 `scripts/transcribe.ps1`（PowerShell + `uv` + Python 3.12），**目前仅在 Windows 可用**；macOS/Linux 请让用户提供转写文本，或用平台字幕/desc 降级。
 - 默认不标时间戳（`options.includeTimestamps` 可开）
 
 ## 参考

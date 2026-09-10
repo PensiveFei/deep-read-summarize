@@ -126,6 +126,140 @@ test('security scanner flags fake secrets and skips clean/ignored files', () => 
   }
 });
 
+// ---------- Test: workflow script contract（DSH workflow 工具）----------
+// 现行契约（0.1.2-rc.1）：agent/parallel/pipeline/phase/log/args 六个钩子；agent() 选项只允许
+// label/phase/schema/provider/model（其它选项会被引擎判为 fatal）；schema 只允许
+// type/properties/required/additionalProperties/items/enum/const/oneOf + 注解键；
+// 脚本沙箱没有文件系统/网络/定时器/require。任何一条违反都会在真机上直接终止整条 workflow。
+const workflow = require('../workflow');
+const wfScript = workflow.script;
+
+const ALLOWED_SCHEMA_KEYWORDS = [
+  'type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'const', 'oneOf',
+  'description', 'title', 'default', 'examples',
+];
+const ALLOWED_AGENT_OPTIONS = ['label', 'phase', 'schema', 'provider', 'model'];
+
+/** 从脚本里取出 \`const XSchema = { ... }\` 的字面量并求值（脚本里的 schema 只是对象字面量）。 */
+function extractSchemaLiterals(text) {
+  const out = [];
+  const re = /const (\w*[Ss]chema) = \{/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const from = text.indexOf('{', m.index);
+    let depth = 0;
+    let i = from;
+    for (; i < text.length; i += 1) {
+      if (text[i] === '{') depth += 1;
+      else if (text[i] === '}') { depth -= 1; if (depth === 0) break; }
+    }
+    out.push({ name: m[1], value: eval('(' + text.slice(from, i + 1) + ')') }); // eslint-disable-line no-eval
+  }
+  return out;
+}
+
+/**
+ * 递归校验一个 JSON Schema 节点：只允许 DSH 子集的关键字。
+ * 只有 schema 位置的关键字受限——\`properties\` 下的键名是数据字段名，不参与校验。
+ * @returns {string[]} 违规关键字（含路径）
+ */
+function unsupportedSchemaKeywords(node, path = '$') {
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) return [];
+  const bad = [];
+  for (const key of Object.keys(node)) {
+    if (!ALLOWED_SCHEMA_KEYWORDS.includes(key)) bad.push(path + '.' + key);
+  }
+  if (node.properties && typeof node.properties === 'object') {
+    for (const [name, child] of Object.entries(node.properties)) {
+      bad.push(...unsupportedSchemaKeywords(child, path + '.properties.' + name));
+    }
+  }
+  if (node.items) bad.push(...unsupportedSchemaKeywords(node.items, path + '.items'));
+  if (Array.isArray(node.oneOf)) node.oneOf.forEach((child, i) => bad.push(...unsupportedSchemaKeywords(child, path + '.oneOf[' + i + ']')));
+  return bad;
+}
+
+test('workflow: agent() schemas stay inside the DSH-supported subset', () => {
+  // 违反子集 = 引擎抛 UNSUPPORTED_SCHEMA = 整条 workflow 直接终止（不是降级）。
+  const schemas = extractSchemaLiterals(wfScript);
+  assert.ok(schemas.length >= 2, 'expected the fetch/check schemas, found ' + schemas.length);
+  for (const s of schemas) {
+    assert.deepStrictEqual(unsupportedSchemaKeywords(s.value), [],
+      s.name + ' uses unsupported schema keyword(s)');
+  }
+});
+
+test('workflow: the schema-subset checker actually rejects an unsupported keyword', () => {
+  // 反向断言：确保上面的“通过”不是因为校验器写空了。
+  const bad = unsupportedSchemaKeywords({ type: 'object', properties: { a: { type: 'string', minLength: 3 } } });
+  assert.deepStrictEqual(bad, ['$.properties.a.minLength']);
+});
+
+test('workflow: agent() options stay inside the engine whitelist', () => {
+  const re = /agent\([^,]*,\s*\{([^}]*)\}/g;
+  let m;
+  let calls = 0;
+  while ((m = re.exec(wfScript)) !== null) {
+    calls += 1;
+    const keys = [];
+    const keyRe = /([A-Za-z_][A-Za-z0-9_]*)\s*:/g;
+    let k;
+    while ((k = keyRe.exec(m[1])) !== null) keys.push(k[1]);
+    for (const key of keys) {
+      assert.ok(ALLOWED_AGENT_OPTIONS.includes(key),
+        'agent() option "' + key + '" is not supported by the engine (allowed: ' + ALLOWED_AGENT_OPTIONS.join(', ') + ')');
+    }
+  }
+  assert.ok(calls >= 5, 'expected the script agent() calls, found ' + calls);
+});
+
+test('workflow: the script never reaches for APIs the sandbox does not provide', () => {
+  const forbidden = [
+    [/\brequire\s*\(/, 'require()'],
+    [/\bprocess\s*\./, 'process'],
+    [/\bfs\s*\./, 'fs'],
+    [/\bfetch\s*\(/, 'fetch()'],
+    [/\bsetTimeout\s*\(/, 'setTimeout()'],
+    [/\bsetInterval\s*\(/, 'setInterval()'],
+    [/\b__dirname\b/, '__dirname'],
+    [/\bchild_process\b/, 'child_process'],
+  ];
+  for (const [re, label] of forbidden) {
+    assert.ok(!re.test(wfScript), 'the workflow sandbox provides no ' + label);
+  }
+});
+
+test('workflow: the script self-contains all four parsers', () => {
+  for (const name of ['book', 'paper', 'video', 'web']) {
+    assert.ok(wfScript.includes(name + ': { buildPrompt:'), 'parser "' + name + '" is not inlined');
+  }
+  assert.ok(wfScript.includes('const parsers = args._parsers || __parsers;'), 'the args._parsers fallback is missing');
+});
+
+// ---------- Test: skill content（复用本文件顶部已有的 plugin 引用）----------
+test('skill content carries meta + script + args and the write-back step', () => {
+  const content = plugin.buildSkillContent();
+  assert.ok(content.includes(workflow.meta.name), 'meta missing from the skill body');
+  assert.ok(content.includes(wfScript), 'the workflow script must be embedded verbatim');
+  assert.ok(content.includes('"input"'), 'the args example is missing');
+  // 脚本没有文件系统权限：技能必须明确要求主代理把 note 落盘，否则笔记会丢。
+  assert.ok(/filePath/.test(content) && /write/.test(content), 'the skill must tell the model to persist note -> filePath');
+});
+
+test('plugin entry satisfies the Cordis contract and registers one bundled skill', () => {
+  assert.strictEqual(plugin.name, 'deep-read-summarize');
+  assert.deepStrictEqual(plugin.inject, ['skills']);
+  assert.strictEqual(typeof plugin.apply, 'function');
+  const registered = [];
+  const ctx = { skills: { register: (skill) => { registered.push(skill); return () => {}; } } };
+  const dispose = plugin.apply(ctx, {});
+  assert.strictEqual(registered.length, 1);
+  assert.strictEqual(registered[0].name, 'deep-read-summarize');
+  assert.strictEqual(registered[0].source, 'bundled');
+  assert.ok(registered[0].content.length > 1000);
+  assert.strictEqual(typeof dispose, 'function');
+});
+
 // ---------- Run cache tests ----------
 console.log('\n=== cache tests ===');
 const cacheResult = require('./cache.test.js');

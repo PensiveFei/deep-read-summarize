@@ -7,6 +7,9 @@ build/
 *.log
 .DS_Store
 
+# Local npm pack output (release artifacts live on GitHub Releases / npm)
+*.tgz
+
 # Deep-read temp artifacts (fetched content, chunk plans)
 _deepread_temp/
 *.tmp

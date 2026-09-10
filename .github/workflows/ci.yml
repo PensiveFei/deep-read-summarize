@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [18, 20, 22, 24]
     steps:
       - uses: actions/checkout@v4
 
@@ -29,6 +29,12 @@ jobs:
 
       - name: Fixture tests
         run: npm test
+
+      # tests/index.test.js carries the Cordis-contract regression (the 0.3.3
+      # entry exported no apply() and the harness refused to start). It only
+      # runs under node:test, so this step is what actually guards it.
+      - name: node:test suite
+        run: npm run test:node
 
       - name: Validate
         run: npm run validate

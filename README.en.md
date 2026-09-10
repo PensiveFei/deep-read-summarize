@@ -19,6 +19,20 @@ Content is split into chunks, read in parallel by multiple sub-agents, then merg
 
 ---
 
+## What it looks like
+
+(Images use absolute GitHub URLs so they render on npm too; the PNGs ship with the repository, not inside the npm package.)
+
+| Deep-read paper note | Video note metadata |
+| --- | --- |
+| ![Paper note](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-paper-note-cot.png) | ![Video note metadata](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-video-note-metadata.png) |
+
+| Video note action items | In-chat digest |
+| --- | --- |
+| ![Video note action items](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-video-note-actions.png) | ![In-chat digest](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-in-chat-digest.png) |
+
+---
+
 ## What it does
 
 - Books (PDF/EPUB/MOBI), papers (arXiv/PDF/HTML), videos (**subtitles first, auto-transcription when there are none** — produces a full transcript for deep reading), web pages
@@ -143,6 +157,8 @@ Pass the JSON below to DSH's workflow tool (see Usage):
 ```
 
 The workflow returns a structured result: `{ ok, kind, title, filePath, qualityPassed, note }`, where `note` is the final Markdown note.
+
+> ⚠️ **The caller persists the note.** DSH's workflow contract gives the script no filesystem access — it only coordinates subagents — so the script returns the note body plus a suggested `filePath` and never writes the file itself. The bundled SKILL.md tells the model to write `note` to `filePath` with the `write` tool after the run; do the same when you invoke the workflow by hand, or the note exists only in the return value.
 
 ---
 ## Usage
@@ -273,12 +289,19 @@ See CHANGELOG.md for changes and CONTRIBUTING.md for contribution guidelines.
 
 ## Compatibility
 
-DSH is evolving quickly and has had breaking changes. This repo depends on:
+**Verified host: DSH 0.1.2-rc.1** (Node 24). The dependency surface is exactly two things:
 
-- the workflow tool's `agent()`, `parallel()`, `phase()`, `log()`, `args`
-- a JSON Schema subset: `type / properties / required / additionalProperties / items / enum / const / oneOf`
+| Surface | Current contract | How this repo uses it |
+| --- | --- | --- |
+| workflow script hooks | `agent()` / `pipeline()` / `parallel()` / `phase()` / `log()` / `args` | only `agent/parallel/phase/log/args`; `agent()` options limited to `label/phase/schema` (the engine accepts only `label/phase/schema/provider/model` and treats anything else as fatal) |
+| JSON Schema subset | `type / properties / required / additionalProperties / items / enum / const / oneOf` plus annotation keys | both `agent()` schemas verified against the host's real `assertObjectJsonSchema` |
 
-After upgrading DSH, run `npm test` first. If it breaks, cross-reference the version history in CHANGELOG.md.
+Two contract details that bite:
+
+- **The script sandbox has no filesystem, network, timers or `require`** — it coordinates subagents; the caller persists the note (see ⚠️ above).
+- **Breaking the schema subset terminates the run** rather than degrading: the engine raises `UNSUPPORTED_SCHEMA` and the whole workflow fails. `npm test` carries a regression for this, including a reverse assertion so the checker cannot pass vacuously.
+
+After upgrading DSH, run `npm test` and `npm run test:node`; if something breaks, cross-reference CHANGELOG.md.
 
 ---
 

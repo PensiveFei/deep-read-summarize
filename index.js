@@ -1,7 +1,7 @@
 // ============================================================================
 // deep-read-summarize — DSH plugin entry
 // ============================================================================
-// 标准 Cordis 插件（DSH 0.1.x / rc7 契约）：导出 name + inject + apply(ctx)。
+// 标准 Cordis 插件（DSH 0.1.x 契约，已在 0.1.2-rc.1 实测）：导出 name + inject + apply(ctx)。
 // apply() 将插件自带的 SKILL.md 注册为运行时技能，并把 workflow 的
 // meta + 自包含 script + args 示例嵌入技能内容，使模型可直接用 workflow
 // 工具执行精读流程。
@@ -47,7 +47,7 @@ function buildSkillContent() {
   ].join('\n');
 }
 
-/** rc7 Cordis 插件入口：注册运行时技能，使模型可直接执行精读 workflow。 */
+/** Cordis 插件入口：注册运行时技能，使模型可直接执行精读 workflow。 */
 function apply(ctx, config = {}) {
   const skillDir = path.join(__dirname, 'skills', 'deep-read-summarize');
   return ctx.skills.register({
@@ -56,7 +56,9 @@ function apply(ctx, config = {}) {
     whenToUse: workflow.meta.whenToUse,
     content: buildSkillContent(),
     resourceBase: { kind: 'directory', path: skillDir },
-    source: 'plugin:deep-read-summarize'
+    // source 是技能的「来源桶」（runtime / bundled / user-dsh …），不是自由描述：
+    // 本技能随插件包分发，因此登记为 bundled。
+    source: 'bundled'
   });
 }
 
