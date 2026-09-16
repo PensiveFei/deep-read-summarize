@@ -3,6 +3,41 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.8] — 2026-09-16
+
+又一次「代码审查 + 真机复现」驱动的修复轮。这一轮的核心发现不是某一行写错了，而是**几处「文档承诺」与「代码实际行为」对不上**：选项算出来不用、schema 抄了两份各自漂移、配置文件里的键全是空转。所有 P0 都用 mock 掉 `agent/parallel/phase/log` 的方式**跑真实脚本复现过**，并各自补了回归测试。测试 35 → **62**（fixture 35 + node:test 27）。
+
+### Fixed
+
+- **frontmatter 注入：标题里带引号会产出坏 YAML（P0）**。`title: "《" + finalTitle + "》…"` 是裸拼，内容标题含 `"`（如 *The "Best" Method*）时 frontmatter 直接被截断，Obsidian / Dataview 全部解析失败。现在统一走 `yamlStr()`（JSON 字符串转义，是 YAML double-quoted 风格的子集），`title / aliases / author / year / type / url` 全部转义；标题里的换行/制表也一并折叠，不再污染 `.md` 文件名。
+- **幂等命中分支会返回空笔记（P0）**。脚本里那段 `args._processedKeys` 早返回，命中时返回 `note: ""` + `filePath: ""`；而 SKILL.md 第 8 步要求主代理「把 `note` 写入 `filePath`」——命中即写出空文件。宿主实际上**从不注入 `args._processedKeys`**（0.1.x 全仓 0 命中），这段代码永远不会命中，一旦命中就是数据事故。整段删除。
+- **分块计划不受 `maxChunks` 约束（P0）**。提示词里写着「块数不超过 N 块」，但脚本原样相信子代理返回的 `chunkPlan`：实测 `maxChunks: 4` 会起 **10 个子代理**——这正是 0.3.x 反复踩的「单次调用超时」的成因。现在按上限截断，并在收敛时记日志。
+- **分块行号区间不校验（P0）**。倒置区间（`startLine: 900, endLine: 100`）会原样拼成 `limit=-799` 交给 `read`。现在丢弃倒置/越界的块，并按 `totalLines` 夹紧上界；全部无效时按可降级错误返回，不再空跑。
+- **全非法字符的标题会写出隐藏文件**：`///` 之类清洗后为空 → `./output/.md`。现在兜底为 `未命名内容.md`。
+- **`options.transcribe: false` 完全无效**。`parsers/video.js` 里 `wantTranscribe` 算完从未被使用，`true` 与 `false` 生成的提示词**逐字相同**，README/SKILL 却都承诺「false 则跳过转写」。现在提示词真的分流：禁用时明确禁止定位/运行 `transcribe.ps1`、禁止下载模型，直接走降级。
+- **`options.whisperModel` / `options.language` 文档教用、代码没有**。README 写着「可用 `options.whisperModel` 调整」「纯英文视频可设 `language: "en"`」，但脚本既不读也不透传，转写命令里 `-Model small -Language zh` 是写死的。现在两个选项都从 options → 脚本 → 解析器 → 命令行全程打通，默认值保持 `small` / `zh`（对既有用户零行为变化）。
+- **`kind` 会变成 `"auto"` 流进笔记**。`type: auto` 且子代理没回 `kind` 时，`frontmatter` 的 `type` 与 `tags` 会被写成 `auto`。现在 `auto` 只接受解析器表里真实存在的类型，否则退回实际使用的回退解析器。
+
+### Changed
+
+- **插件 config 不再是空转**。`apply(ctx, config)` 此前收了 config 从不读它，`cordis.patch.yml` 里列的 8 个键（`outputDir`/`tempDir`/`minWords`/…）全部无效。现在会做白名单校验（类型不符 → 告警并忽略，不会因为一个拼错的键把整个 profile 拖死），合并进技能里的 args 示例，成为该 profile 的默认值。`cordis.patch.yml` 的注释同步改写（含 `maxChunks` 6 → 4）。
+- **schema 不再有两份真相**。脚本里那份手抄的 `fetchSchema` 已删除，改由 `workflow.js` 在构建自包含脚本时从 `schemas/index.js` **注入**；`kind` 的 `enum` 跟着解析器注册表走。此前手抄副本已经漂移（丢了 `enum`）。同时把 `chunkReadSchema` / `qualityChecklistSchema` **没有被 workflow 使用**这件事写进 `schemas/index.js` 头部——它们留给程序化调用方。
+- **自定义解析器真正可用**。以前 `type` 白名单写死 `auto|book|paper|video|web`，且自包含脚本只内联这四个，`custom-parsers/` 里的**新类型**端到端不可达。现在内联的是注册表里的全部解析器，白名单与 schema 枚举都从注册表推导；同名覆盖照旧有效。
+- **幂等从「脚本假装会做」改成「文档如实说不会做」**。脚本沙箱没有文件系统，写不了指纹记录——`lib/cache.js` 从 0.1.0 起就没被 workflow 调用过。现在 SKILL.md 第 2 步改为：由主代理在落盘前检查目标 `filePath` 是否已存在；程序化去重可用 `deep-read-summarize/lib/cache`（`package.json` 的 `exports` 补上了这个子路径，此前被 exports map 挡住根本 require 不到）。
+- SKILL.md 新增第 9 步：`ok: false` 要说明卡在哪一步，`qualityPassed: false` / `failedChunks > 0` 必须在回复里点出来，不许拿半成品冒充成品。
+- `prepublishOnly` 补跑 `node --test`（此前发布门禁只跑 fixture 测试，`tests/index.test.js` 不在门禁内）。
+- npm 描述去掉 `idempotent cache`（工作流层确实没有这个能力）。
+
+### Added
+
+- **workflow 运行时回归测试（12 → 27 项 `node:test`）**：用 mock 掉 `agent/parallel/phase/log` 的方式跑**真实脚本**，逐条锁住本轮修的 P0/P1——分块收敛、区间夹紧、全无效计划降级、YAML 转义、隐藏文件名兜底、`kind` 兜底、幂等早返回已移除、`transcribe` 分流、`whisperModel`/`language` 透传、config 校验与透传、schema 单一真相、自定义类型端到端（含自定义解析器内联与枚举跟进）、未知类型仍然响亮报错、`lib/cache` 可达。
+
+### Compatibility
+
+- 对既有用户**无破坏性变更**：默认值全部保持不变（`maxChunks` 4、`transcribe` true、`whisperModel` small、`language` zh、`outputDir` `./output`）。
+- 行为变化仅在于「以前被静默忽略的东西现在生效了」：超过 `maxChunks` 的计划会被截断（子代理数下降、耗时下降）、非法分块区间会被丢弃（此前会把负数 limit 传给 `read`）。
+- 历史文档 `docs/RELEASE-v0.1.0.md` 里 v0.1.0 的「幂等缓存」描述保持原样（它是对当时意图的记录），实际能力以本节与 `schemas/index.js` 的说明为准。
+
 ## [0.3.7] — 2026-09-09
 
 针对 **DSH 0.1.2-rc.1** 的一轮兼容性核查与打磨（对使用者无破坏性变更）。

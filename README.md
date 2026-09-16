@@ -37,7 +37,8 @@
 
 - 书籍（PDF/EPUB/MOBI）、论文（arXiv/PDF/HTML）、视频（**字幕优先，无字幕自动转写**，出品完整逐字稿精读）、网页
 - 长内容分块后由并行子代理精读，再合并
-- 各子任务的输出用 JSON Schema 约束，不合格自动重试
+- 获取/分块与质量校验的输出受 JSON Schema 约束，结构稳定、下游可解析
+- 分块计划与子代理数量受 `maxChunks` 强制约束（计划失控会顶穿单次调用时限）
 - 关键引用必须标注页码/章节/段落，降低编造风险
 - 配置错误直接报错终止；某块内容解析失败则跳过并标记缺口
 - 输出可直接放进 Obsidian，配合 Dataview 使用
@@ -74,13 +75,13 @@ parsers/         各输入类型的解析器，按类型分发
   video.js       视频：完整逐字稿（字幕优先，无字幕自动转写，走 scripts/transcribe.ps1）
   web.js         网页：正文提取
   index.js       注册表：解析器发现与回退
-schemas/         子任务输出的 JSON Schema
+schemas/         输出约束的 JSON Schema（波次1 由 workflow.js 注入脚本，单一真相）
 scripts/         lint、安全检查
 tests/           fixture 测试与验证脚本
 workflow.js      workflow 脚本本体（meta + script）
 ```
 
-想换某个输入类型的处理方式，在 `custom-parsers/` 放一个同接口的解析器即可，同名类型会覆盖内置实现。接口只有三个字段：`name`、`types`、`buildPrompt(input, opts)`。
+想换某个输入类型的处理方式，在 `custom-parsers/` 放一个同接口的解析器即可，同名类型会覆盖内置实现；用新类型名（如 `podcast`）也可以——注册表里的解析器会全部内联进 workflow 脚本，`type` 白名单与 schema 的 `kind` 枚举都跟着注册表走。接口只有三个字段：`name`、`types`、`buildPrompt(input, opts)`。
 
 ---
 
@@ -174,6 +175,8 @@ parsers: book, paper, video, web
     "fastMode": false,        // true 时跳过 5-7 节，速度快一些
     "maxChunks": 4,           // 分块上限，1-12（默认调低，控制子代理数与耗时）
     "transcribe": true,       // 视频：无字幕时自动本地转写（faster-whisper）；false 则跳过转写，见「视频」节
+    "whisperModel": "small",  // 视频转写模型档位：small | base | medium
+    "language": "zh",         // 视频转写语言：纯英文视频可设 "en"
     "requireCitations": true, // 关键结论是否必须标注出处
     "includeTimestamps": false,
     "outputDir": "./output",    // 笔记输出目录（可指向 Obsidian 仓库）

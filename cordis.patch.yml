@@ -10,13 +10,20 @@
     - id: deep-read-summarize
       name: 'deep-read-summarize'
 
-# All plugin config keys are optional; defaults are applied by the plugin.
+# All plugin config keys are optional. The plugin validates each one (wrong type
+# = warning + ignore, never a startup failure) and folds them into the default
+# args carried by the skill, so they become this profile's defaults.
 #   config:
 #     outputDir: './output'      # where notes are written (default: ./output)
 #     tempDir: './.tmp'          # temp files for chunked content (default: ./.tmp)
-#     minWords: 2500             # minimum output length
-#     fastMode: false            # skip sections 5-7 for speed
-#     maxChunks: 6               # chunk cap (1-12)
-#     requireCitations: true     # key conclusions must cite source location
-#     includeTimestamps: false   # video timestamps (off by default)
-#     cache: true                # idempotency cache on input fingerprint
+#     minWords: 2500             # minimum output length (default: 2500)
+#     fastMode: false            # skip sections 5-7 for speed (default: false)
+#     maxChunks: 4               # chunk cap; also caps sub-agent count (1-12, default: 4)
+#     transcribe: true           # video: auto-transcribe when no subtitles (default: true)
+#     requireCitations: true     # key conclusions must cite source location (default: true)
+#     includeTimestamps: false   # video timestamps (default: false)
+#
+# Idempotency is deliberately NOT a plugin config key: the workflow script runs
+# without a filesystem, so it cannot write a fingerprint record. Programmatic
+# callers can use `deep-read-summarize/lib/cache`
+# (fingerprint / hasProcessed / markProcessed).

@@ -229,11 +229,15 @@ test('workflow: the script never reaches for APIs the sandbox does not provide',
   }
 });
 
-test('workflow: the script self-contains all four parsers', () => {
-  for (const name of ['book', 'paper', 'video', 'web']) {
-    assert.ok(wfScript.includes(name + ': { buildPrompt:'), 'parser "' + name + '" is not inlined');
+test('workflow: the script self-contains every registered parser', () => {
+  // 内联的是注册表里的全部解析器（含 custom-parsers/ 的覆盖与自定义类型），
+  // 不是写死的四个 —— 断言跟着注册表走，注册表加了东西这里自动跟着收紧。
+  for (const name of Object.keys(workflow.parsers.registry.parsers)) {
+    assert.ok(wfScript.includes(JSON.stringify(name) + ': { buildPrompt:'),
+      'parser "' + name + '" is not inlined');
   }
   assert.ok(wfScript.includes('const parsers = args._parsers || __parsers;'), 'the args._parsers fallback is missing');
+  assert.ok(wfScript.includes('const fetchSchema = {'), 'the fetch schema must be injected, not hand-copied');
 });
 
 // ---------- Test: skill content（复用本文件顶部已有的 plugin 引用）----------

@@ -17,33 +17,61 @@ module.exports = {
   description: "视频解析器（B站/抖音/YouTube → 完整逐字稿，字幕优先，无字幕自动转写）",
 
   buildPrompt: function (input, opts) {
-    const tempDir = (opts && opts.tempDir) || "./.tmp";
-    const wantTranscribe = opts.transcribe !== false;   // 默认 true：无字幕时自动走本地转写
+    const o = opts || {};
+    const tempDir = o.tempDir || "./.tmp";
+    // 默认 true：无字幕时自动走本地转写。false 时必须真的改变提示词——
+    // 此前这里算出来的值从未被使用，transcribe:false 与 true 生成的提示词逐字相同。
+    const wantTranscribe = o.transcribe !== false;
+    const whisperModel = o.whisperModel || "small";
+    const language = o.language || "zh";
     const degradeMsg = "需要人工提供转写文本或视频文案";
+
+    const noSubtitleBranch = wantTranscribe
+      ? "② 若**无公开字幕**，用插件自带 faster-whisper 转写得到全文；③ 仍不可行才降级（提示人工提供转写文本 或 退回 desc 作背景）。"
+      : "② **本次已禁用转写**（options.transcribe=false）：无公开字幕时直接降级（提示人工提供转写文本 或 退回 desc 作背景），不要尝试转写。";
+    const biliNoSubtitle = wantTranscribe
+      ? "  3) 无公开字幕时（textSource=transcription）：按下方「转写执行」用 faster-whisper 转写整段音频，得到完整全文。"
+      : "  3) 无公开字幕时：转写已被禁用（options.transcribe=false），按降级处理，不要取音频、不要转写。";
+    const douyinTail = wantTranscribe
+      ? "desc 较完整时可直接作为文本（textSource=desc）；若 desc 太短，仍按下方「转写执行」转写（textSource=transcription）。"
+      : "desc 较完整时可直接作为文本（textSource=desc）；若 desc 太短，直接降级提示用户补充文案（转写已禁用）。";
+    const ytTail = wantTranscribe
+      ? "已安装时用 yt-dlp 抓字幕（CC）转文本；无 CC 则转写。"
+      : "已安装时用 yt-dlp 抓字幕（CC）转文本；无 CC 则降级（转写已禁用）。";
+
     const steps = [
       "记录文本来源（metadata.textSource）：subtitle（平台字幕）/ transcription（本地转写）/ desc（仅简介，作为降级/背景）/ manual（用户提供）。",
-      "统一流程：① 先取视频字幕（B站 AI 字幕 / YouTube yt-dlp CC）；② 若**无公开字幕**，用插件自带 faster-whisper 转写得到全文；③ 仍不可行才降级（提示人工提供转写文本 或 退回 desc 作背景）。",
+      "统一流程：① 先取视频字幕（B站 AI 字幕 / YouTube yt-dlp CC）；" + noSubtitleBranch,
       "若输入是 B 站链接（bilibili.com / b23.tv，短链先用 curl -L 跟随重定向提取 BV 号）：用 curl（Windows 自带，零安装）调官方公开 API：\n" +
         "  1) 元数据+简介：curl 'https://api.bilibili.com/x/web-interface/view?bvid=<BV>' → 取 title / desc（简介仅作背景/补充，不满一篇精读）/ owner.name / duration / aid / cid\n" +
         "  2) 字幕（**优先，最快**）：curl 'https://api.bilibili.com/x/player/v2?aid=<aid>&cid=<cid>' 取 subtitle 列表；若有则下载转文本（textSource=subtitle）——这已是完整逐字稿，直接使用\n" +
-        "  3) 无公开字幕时（textSource=transcription）：按下方「转写执行」用 faster-whisper 转写整段音频，得到完整全文。",
+        biliNoSubtitle,
 
-      "若输入是抖音链接/分享口令（douyin.com / v.douyin.com）：用户分享时复制的文字本身就是该视频的文案（desc）。desc 较完整时可直接作为文本（textSource=desc）；若 desc 太短，仍按下方「转写执行」转写（textSource=transcription）。",
-      "若输入是 YouTube 等其他平台：先探测是否已装 yt-dlp（pwsh 运行 `yt-dlp --version`）。若未安装：绝对不要去下载 yt-dlp 二进制（GitHub 直连在部分网络下极慢且易中断，会卡死整个流程）；先试 `winget install yt-dlp.yt-dlp`，再试 `pip install -U yt-dlp -i https://pypi.tuna.tsinghua.edu.cn/simple`；仍不可用则按下方「转写执行」直接转写或降级。已安装时用 yt-dlp 抓字幕（CC）转文本；无 CC 则转写。",
-
-      "转写执行（faster-whisper small/int8/中文，镜像+缓存，保证本机与用户一致）：",
-      "  ① 先取音频：B站用 playurl（curl 'https://api.bilibili.com/x/player/playurl?avid=<aid>&cid=<cid>&fnval=16&fourk=1' 的 dash.audio[0].baseUrl）或 yt-dlp，下载存到 '" + tempDir + "/audio.m4a'；\n" +
-        "  ② 定位插件转写脚本：用 Get-ChildItem -Path $env:USERPROFILE/.dsh -Recurse -Filter transcribe.ps1（或 glob 搜 *transcribe.ps1）找到 <脚本路径>；\n" +
-        "  ③ 运行：pwsh <脚本路径> -Audio '" + tempDir + "/audio.m4a' -Out '" + tempDir + "/transcript.txt' -Model small -Language zh；\n" +
-        "  ④ 转写可能较慢：用 pwsh（run_in_background: true）启动后，轮询输出文件 '" + tempDir + "/transcript.txt' 是否写出内容（非空且稳定），或日志出现 DONE；设合理超时，超时/失败则降级；\n" +
-        "  ⑤ 成功后读取 transcript.txt 作为全文（textSource=transcription）。脚本自举：uv 建 Python 3.12 环境 + 镜像装 faster-whisper + hf-mirror 下模型并缓存。**⚠️ 首次转写会先下载 small 模型（约 484MB，hf-mirror）并较慢——先向用户说明这是正常的一次性下载，勿当成卡死；之后缓存复用、秒开。**",
-
-      "若以上均不可用或抓取失败：输出 { \"saved\": false, \"message\": \"" + degradeMsg + "\" }。"
+      "若输入是抖音链接/分享口令（douyin.com / v.douyin.com）：用户分享时复制的文字本身就是该视频的文案（desc）。" + douyinTail,
+      "若输入是 YouTube 等其他平台：先探测是否已装 yt-dlp（pwsh 运行 `yt-dlp --version`）。若未安装：绝对不要去下载 yt-dlp 二进制（GitHub 直连在部分网络下极慢且易中断，会卡死整个流程）；先试 `winget install yt-dlp.yt-dlp`，再试 `pip install -U yt-dlp -i https://pypi.tuna.tsinghua.edu.cn/simple`；" +
+        (wantTranscribe ? "仍不可用则按下方「转写执行」直接转写或降级。" : "仍不可用则直接降级（转写已禁用）。") + ytTail
     ];
+
+    if (wantTranscribe) {
+      steps.push(
+        "转写执行（faster-whisper " + whisperModel + " / int8 / " + language + "，镜像+缓存，保证本机与用户一致）：",
+        "  ① 先取音频：B站用 playurl（curl 'https://api.bilibili.com/x/player/playurl?avid=<aid>&cid=<cid>&fnval=16&fourk=1' 的 dash.audio[0].baseUrl）或 yt-dlp，下载存到 '" + tempDir + "/audio.m4a'；\n" +
+          "  ② 定位插件转写脚本：用 Get-ChildItem -Path $env:USERPROFILE/.dsh -Recurse -Filter transcribe.ps1（或 glob 搜 *transcribe.ps1）找到 <脚本路径>；\n" +
+          "  ③ 运行：pwsh <脚本路径> -Audio '" + tempDir + "/audio.m4a' -Out '" + tempDir + "/transcript.txt' -Model " + whisperModel + " -Language " + language + "；\n" +
+          "  ④ 转写可能较慢：用 pwsh（run_in_background: true）启动后，轮询输出文件 '" + tempDir + "/transcript.txt' 是否写出内容（非空且稳定），或日志出现 DONE；设合理超时，超时/失败则降级；\n" +
+          "  ⑤ 成功后读取 transcript.txt 作为全文（textSource=transcription）。脚本自举：uv 建 Python 3.12 环境 + 镜像装 faster-whisper + hf-mirror 下模型并缓存。**⚠️ 首次转写会先下载模型（small 约 484MB，hf-mirror）并较慢——先向用户说明这是正常的一次性下载，勿当成卡死；之后缓存复用、秒开。**"
+      );
+    } else {
+      steps.push(
+        "【转写已禁用】options.transcribe=false：只允许使用平台字幕或简介（desc）。不要定位或运行 scripts/transcribe.ps1，不要下载模型，不要安装任何转写工具；拿不到字幕就按降级处理。"
+      );
+    }
+
+    steps.push('若以上均不可用或抓取失败：输出 { "saved": false, "message": "' + degradeMsg + '" }。');
 
     return prompt.buildFetchPrompt({
       input: input,
-      opts: opts,
+      opts: o,
       fetchTarget: "视频完整逐字稿（字幕优先，无字幕自动转写）",
       kindLabel: "视频（video）",
       steps: steps,

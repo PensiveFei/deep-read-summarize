@@ -37,7 +37,8 @@ Content is split into chunks, read in parallel by multiple sub-agents, then merg
 
 - Books (PDF/EPUB/MOBI), papers (arXiv/PDF/HTML), videos (**subtitles first, auto-transcription when there are none** — produces a full transcript for deep reading), web pages
 - Long content is chunked and read in parallel by sub-agents, then merged
-- Sub-task outputs are constrained by JSON Schema; invalid outputs are retried automatically
+- The fetch/chunk plan and the quality check are constrained by JSON Schema, so their output is stable and machine-readable
+- Chunk count — and therefore sub-agent count — is enforced by `maxChunks` (a runaway plan blows the per-call time limit)
 - Key citations must carry page/chapter/paragraph references to reduce fabrication
 - Configuration errors abort immediately; a chunk that fails to parse is skipped and marked as a gap
 - Output drops straight into Obsidian and works with Dataview
@@ -74,13 +75,13 @@ parsers/         Parsers for each input type, dispatched by type
   video.js       Video: full transcript (subtitles first; auto-transcribe via scripts/transcribe.ps1 when none)
   web.js         Web pages: main-text extraction
   index.js       Registry: parser discovery and fallback
-schemas/         JSON Schema for sub-task outputs
+schemas/         JSON Schema for the output contract (injected into the script by workflow.js - single source of truth)
 scripts/         lint, security checks
 tests/           fixture tests and validation scripts
 workflow.js      The workflow script itself (meta + script)
 ```
 
-To change how an input type is handled, drop a parser with the same interface into `custom-parsers/`; a type with the same name overrides the built-in implementation. The interface has only three fields: `name`, `types`, `buildPrompt(input, opts)`.
+To change how an input type is handled, drop a parser with the same interface into `custom-parsers/`; a type with the same name overrides the built-in implementation, and you can also add a brand-new type name (e.g. `podcast`) - every registered parser is inlined into the workflow script, and both the `type` whitelist and the schema's `kind` enum follow the registry. The interface has only three fields: `name`, `types`, `buildPrompt(input, opts)`.
 
 ---
 
@@ -174,6 +175,8 @@ Pass this JSON to DSH's workflow tool:
     "fastMode": false,        // true skips sections 5-7, faster
     "maxChunks": 4,           // chunk limit, 1-12 (default lowered to control sub-agent count and time)
     "transcribe": true,       // video: auto local transcription (faster-whisper) when no subtitles; false skips it — see Video
+    "whisperModel": "small",  // video ASR tier: small | base | medium
+    "language": "zh",         // video ASR language: use "en" for English-only videos
     "requireCitations": true, // whether key conclusions must carry citations
     "includeTimestamps": false,
     "outputDir": "./output",    // note output directory (can point at your Obsidian vault)

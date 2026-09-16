@@ -1,7 +1,7 @@
 {
   "name": "deep-read-summarize",
-  "version": "0.3.7",
-  "description": "Deep reading & summarization for DSH: books/papers/videos/web → structured Obsidian notes. Plugin parsers, MapReduce deep-read, JSON Schema output, idempotent cache.",
+  "version": "0.3.8",
+  "description": "Deep reading & summarization for DSH: books/papers/videos/web → structured Obsidian notes. Plugin parsers, MapReduce deep-read, JSON Schema-constrained sub-tasks.",
   "type": "commonjs",
   "main": "index.js",
   "exports": {
@@ -9,6 +9,7 @@
     "./workflow": "./workflow.js",
     "./parsers": "./parsers/index.js",
     "./schemas": "./schemas/index.js",
+    "./lib/cache": "./lib/cache.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -35,7 +36,7 @@
     "validate": "node tests/quick_validate.js && node scripts/security-check.js",
     "security": "node scripts/security-check.js",
     "test:node": "node --test",
-    "prepublishOnly": "node tests/run-tests.js && node scripts/lint.js && node scripts/security-check.js"
+    "prepublishOnly": "node tests/run-tests.js && node --test && node scripts/lint.js && node scripts/security-check.js"
   },
   "dsh": {
     "bundle": {

@@ -1,11 +1,18 @@
 // ============================================================================
 // JSON Schemas — 结构化输出约束
 // ============================================================================
-// 所有子任务产出（获取分块 / 精读 / 成稿元数据）都用 JSON Schema 校验，
-// 不合格自动重试，保证下游（Markdown/Notion/数据库导出）可稳定消费。
+// 谁在用哪一份（别凭印象——此前 workflow 脚本里有一份手抄副本，已经漂移）：
+//   - fetchResultSchema：**真的在用**。workflow.js 构建自包含脚本时把它注入进去
+//     （kind 的 enum 按解析器注册表补齐），脚本里不再有第二份副本。
+//   - chunkReadSchema：**workflow 没用**。波次2 的子代理直接返回自由文本，
+//     成稿时按 Markdown 拼接；这份留给程序化调用方（自建管线要结构化块输出时）。
+//   - qualityChecklistSchema：**workflow 没用**。波次3 的内嵌自检走脚本内的
+//     { pass, issues } 轻量 schema。
+// 改这个文件会直接影响波次1 —— 改完跑 npm test（内含 schema 子集回归）。
 //
 // 注意：本 schema 子集遵循 DSH workflow agent() 的约束
 // （type/properties/required/additionalProperties/items/enum/const/oneOf）。
+// 违反子集 = 引擎抛 UNSUPPORTED_SCHEMA = 整条 workflow 终止（不是降级）。
 // ============================================================================
 
 /** 波次1：获取+分块 的结构化输出 */

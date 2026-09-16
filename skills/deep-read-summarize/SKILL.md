@@ -10,9 +10,10 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 
 ## 能力
 
-- 书籍（PDF/EPUB/MOBI）、论文（arXiv/PDF/HTML）、视频（yt-dlp 字幕）、网页
+- 书籍（PDF/EPUB/MOBI）、论文（arXiv/PDF/HTML）、视频（字幕优先，无字幕自动转写）、网页
 - 长内容分块后由并行子代理精读（MapReduce），不溢出上下文
-- JSON Schema 约束子任务输出，不合格自动重试
+- 获取/分块与质量校验的输出受 JSON Schema 约束，结构稳定、下游可解析
+- 分块计划与子代理数量受 `maxChunks` 强制约束（计划失控会顶穿单次调用时限）
 - 关键引用标注页码/章节/段落，降低编造风险
 - 配置错误终止（FATAL）；内容解析失败降级标记缺口继续
 - 输出带 YAML frontmatter（type 字段可配 Dataview）
@@ -20,18 +21,19 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 ## 输入
 
 用户提供：内容链接或本地文件路径。
-可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / cache / outputDir / tempDir）。
+可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / outputDir / tempDir）。
 
 ## 执行步骤
 
 1. **配置校验**：缺 input 或 type 非法 → 报 FATAL 终止
-2. **幂等检查**：若输入已处理过（args._processedKeys 命中）→ 直接返回缓存结果
+2. **幂等检查（由你执行，脚本不做）**：脚本在沙箱内没有文件系统，写不了指纹记录。落盘前先看目标 `filePath` 是否已有同名笔记——已存在就问用户是覆盖还是跳过，别默默重跑一遍烧 token。（要在程序里做去重，可用插件导出的 `lib/cache.js`：fingerprint / hasProcessed / markProcessed。）
 3. **解析器选择**：按类型从 parsers 注册表选解析器（book/paper/video/web）
 4. **波次1 获取+分块**：解析器获取全文 → 写入临时文件 → 生成分块计划（JSON Schema 校验）
 5. **波次2 并行精读**：每个分块一个子代理深度精读（Map）
 6. **波次3 合并成稿**：整合为完整笔记（Reduce），内嵌质量自检
 7. **质量校验**：可选重试（maxRetries），检查覆盖度/引用真实性/术语一致/格式完整/篇幅/语言
 8. **落盘（必须，别跳过）**：workflow 工具只返回 `note`（笔记正文）与 `filePath`（建议路径）——**脚本本身没有文件系统权限**。拿到结果后要用 `write` 工具把 `note` 原样写入 `filePath`（目录不存在就先创建）；不写就等于笔记丢了，用户只会看到一段返回文本
+9. **如实交代结果**：`ok: false` 要说明卡在哪一步（`stage`）和原因，别拿半成品冒充成品；`qualityPassed: false`、`qualityIssues` 非空、或 `failedChunks > 0`（有块精读失败、笔记存在缺口）时，必须在回复里点出来
 
 ## 输出
 
