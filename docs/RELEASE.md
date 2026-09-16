@@ -32,18 +32,55 @@
 
 ---
 
-## npm 发布流程（v0.2.0 起）
+## npm 发布流程
+
+### 首选：npm Trusted Publishing（OIDC，无 token、无 OTP）
+
+```yaml
+.github/workflows/publish.yml  →  在 GitHub Release 被发布时自动发布
+```
+
+凭据由 GitHub OIDC 在运行时现场换取，仓库里不存任何 npm token，也不会触发 npm 的 2FA 提示。
+
+```bash
+# 1. 本地全绿
+npm run lint && npm test && npm run test:node && npm run validate
+
+# 2. 打 tag 并推送
+git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
+
+# 3. 建 Release —— 这一步触发 publish.yml
+gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <notes 文件>
+
+# 4. 验证线上
+npm view deep-read-summarize --prefer-online
+```
+
+**前置（每个包一次性，只能在网页上配）**：
+`https://www.npmjs.com/package/<包名>/access` → Trusted Publishers → Add，填
+Provider `GitHub Actions` / Organization or user `PensiveFei` / Repository `deep-read-summarize` /
+Workflow filename `publish.yml` / Environment 留空。
+
+**历史 tag 里没有这个 workflow 时**（workflow 定义从 main 取，包内容从 tag 取）：
+
+```bash
+gh workflow run publish.yml --ref main -f publish_ref=refs/tags/vX.Y.Z
+gh run watch
+```
+
+### 回退：本地发布（需要交互式 2FA）
+
+> ⚠️ 2026-07 起 npm 已限制「绕过 2FA 的 granular access token」用于**直接发布**，
+> 所以本地发布只能靠交互式 OTP —— 不再有「建个长期 token 一劳永逸」这条路。
 
 ```bash
 cd <项目目录>
-npm run lint && npm test && npm run validate   # 先本地全绿
-npm pkg fix                                   # 规范化 package.json（npm 建议）
-npm publish                                   # prepublishOnly 自动跑门禁（测试+lint+安全）
-npm view deep-read-summarize --prefer-online  # 验证线上（注意：发布后首次查询可能 404，索引有延迟）
+npm run lint && npm test && npm run test:node && npm run validate   # 先本地全绿
+npm publish --otp=<6位码>                                            # prepublishOnly 自动跑门禁
+npm view deep-read-summarize --prefer-online                         # 验证线上（首次查询可能索引延迟）
 ```
 
-- token 配置在用户级 ~/.npmrc 的 npm registry 认证条目（npm whoami 可验证）
-- 本沙箱环境 npm 默认缓存目录可能被拒（EPERM），用 npm publish --cache <工作区内目录>
+- 本沙箱环境 npm 默认缓存目录可能被拒（EPERM），用 `npm publish --cache <可写目录>`
 - 版本号：功能增强 → minor（0.x → 0.y）；修复 → patch；不兼容 → major
 
 ## 当前版本速览
