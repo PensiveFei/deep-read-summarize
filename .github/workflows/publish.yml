@@ -29,9 +29,13 @@ on:
   workflow_dispatch:
     inputs:
       publish_ref:
-        description: '要发布的 ref（留空 = 用本次运行的 ref）。历史 tag 走这里，例如 refs/tags/v0.3.8'
+        description: '要发布的 tag ref（必填，例如 refs/tags/v0.3.8）。留空 = 用本次运行的 ref，而分支 ref 会被拒绝'
         required: false
         default: ''
+      dry_run:
+        description: '只演练不发布（true = npm publish --dry-run）'
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -92,8 +96,24 @@ jobs:
               fi
               echo "OK: version and tag agree"
               ;;
-            *) echo "not a vX.Y.Z ref -- skipping the tag guard" ;;
+            *)
+              # A branch ref publishes whatever that branch happens to contain
+              # under its own package.json version — main is normally AHEAD of
+              # the last tag, so those bytes would match no tag at all.
+              echo "::error::refusing to publish from a non-tag ref ($REF) -- pass publish_ref=refs/tags/vX.Y.Z"
+              exit 1
+              ;;
           esac
+
+      - name: Refuse to republish a version that is already on npm
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VER" version >/dev/null 2>&1; then
+            echo "::error::$NAME@$VER is already published -- bump the version instead of republishing"
+            exit 1
+          fi
+          echo "OK: $NAME@$VER is not on npm yet"
 
       - name: Release gate (tests, lint, security)
         run: |
@@ -104,4 +124,10 @@ jobs:
 
       # 不带 token、不带 --provenance：Trusted Publishing 会自动生成 provenance。
       - name: Publish to npm (OIDC, no token)
-        run: npm publish --access public
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "dry-run: 只演练，不上传"
+            npm publish --access public --dry-run
+          else
+            npm publish --access public
+          fi
