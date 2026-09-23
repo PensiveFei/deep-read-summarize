@@ -3,6 +3,41 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.9] — 2026-09-22
+
+**macOS / Linux 支持**。这一版补上最后一块 Windows-only 的拼图：此前「无字幕视频自动转写」依赖 `scripts/transcribe.ps1`（PowerShell），SKILL.md 里明确写着「**目前仅在 Windows 可用**」；现在换成跨平台的 Node 脚本，三平台同一份实现、同一条命令。
+
+### Added
+
+- **`scripts/transcribe.js` 取代 `scripts/transcribe.ps1`**：跨平台转写自举脚本（Windows / macOS / Linux）。平台差异只集中在四个纯函数里（`cacheRoot` / `venvPython` / `uvInstallHint` / `findUv`），它们都接受注入的 `platform/env/home`——因此**任意 OS 上都能跑全平台矩阵单测**，不必依赖 macOS 机器。
+  - 缓存目录：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`
+  - uv 探测：先扫 PATH，再回退 `~/.local/bin`、`/opt/homebrew/bin`、`/usr/local/bin`、`~/.cargo/bin`（macOS 从图形界面启动时不继承 shell PATH，这一步是必需的）；找不到时按平台给出安装命令（winget / brew / curl 安装器）
+  - `--self-check`：只打印解析出的路径，不安装、不下载、不联网——CI 三平台用它做冒烟
+- **`options.device` 选项**（默认 `cpu`，可选 `auto`/`cuda`）：从 options → workflow 脚本 → 解析器 → 命令行全程打通（与 `whisperModel` / `language` 同一条路径），不是写死在提示词里。`auto`/`cuda` 需自备 CUDA 运行库，失败自动回退 CPU。
+- **CI 新增 `cross-platform` 作业**：在 ubuntu / macos / windows 三个 runner 上跑 lint + `--self-check`，真正在 macOS 上执行一遍平台分支。
+
+### Fixed
+
+- **`device='auto'` 在「有 NVIDIA 显卡但没装 CUDA 运行库」的机器上必崩（真机复现）**：ctranslate2 只要探测到显卡（`get_cuda_device_count() == 1`）就会在 `auto` 下选 CUDA，随后在推理时抛 `Library cublas64_12.dll is not found or cannot be loaded`。这是 0.3.6 起就潜伏在 `transcribe.ps1` 里的问题（本机 RTX 3050 复现）。现在默认 `device=cpu`（与 README 承诺的「CPU 友好、零额外依赖」一致）；设 `options.device: "auto"` 时，失败也会**自动回退 CPU 并打印原因**。
+- **转写中途失败会留下半截 `transcript.txt`**：调用方（提示词第 ④ 步）是按「输出文件非空且稳定」判断转写完成的，半截文件会被**误判成成功**。现在先在内存里收集全部分段，成功后才落盘。
+- **`parsers/video.js` 提示词里的 PowerShell 路径少了分隔符**：`$env:USERPROFILE\.dsh` 写在 JS 字符串里，`\.` 被当成未知转义退化成 `.`，实际发出去的提示词是 `$env:USERPROFILE.dsh`。改用正斜杠（PowerShell 同样接受）。
+- **`parsers/book.js` 让代理用 `pwsh` 调 pdftotext**（第二轮全仓复查才发现，第一轮只盯着转写链路）：macOS 默认没有 PowerShell，**书籍/PDF 这条路在 macOS 上会直接卡住**。现在改成平台中立的 pdftotext 说明，并给出三平台安装方式（macOS `brew install poppler` / Windows `winget install poppler` / Debian·Ubuntu `apt install poppler-utils`）。
+- **`--out` 的父目录不存在时失败信息难以理解**：现在脚本自己先把父目录建好（`./.tmp` 这类调用方路径），不再让 python 抛一句难懂的 `No such file or directory`。
+
+### Changed
+
+- **`parsers/video.js` 提示词改为平台中立**：同时给出 Windows 与 macOS/Linux 的脚本定位命令（`Get-ChildItem … -Filter transcribe.js` / `find "$HOME/.dsh" -name transcribe.js`），yt-dlp 安装同时给出 `winget` 与 `brew`；转写命令三平台统一为 `node <脚本路径> --audio … --out … --device cpu --model … --language …`。
+  - 提示词**不能**按平台分支：它会被内联进 workflow 沙箱脚本，而沙箱不提供 `process`（`tests/run-tests.js` 有对应断言），所以两套写法都写出来、由执行代理按自己的系统选。
+- 转写输出不再带结尾空格（改用 `' '.join(...)`）。
+- 提示词里「转写执行」的 ①–⑥ 子步骤此前被模板编号成了一个独立的顶层步骤（`7.   ① 先取音频…`，后续行反而没有编号），现在与标题合并为同一步，编号回到 `6. 转写执行（…）：` + 未编号的 ①–⑥。
+- `README.md` / `README.en.md` / `SKILL.md` 同步：删掉「仅 Windows 可用」，补上跨平台命令、平台缓存目录与 `options.device` 说明。
+
+### Compatibility
+
+- **Windows 用户零迁移成本**：缓存目录与 `transcribe.ps1` 逐字一致，**已下载的模型不会重下**（真机验证：复用既有 venv + 模型，未触发下载）。
+- 唯一入口改名 `transcribe.ps1` → `transcribe.js`；提示词文本随之变化（脚本名、参数形式、`options.device`），依赖提示词逐字比对的 fork 需要同步。
+- 转写默认从 `auto` 变为 `cpu`：原 `auto` 在无 CUDA 运行库的机器上本来就会崩，真正的 GPU 用户可显式传 `--device auto`。
+
 ## [0.3.8] — 2026-09-16
 
 又一次「代码审查 + 真机复现」驱动的修复轮。这一轮的核心发现不是某一行写错了，而是**几处「文档承诺」与「代码实际行为」对不上**：选项算出来不用、schema 抄了两份各自漂移、配置文件里的键全是空转。所有 P0 都用 mock 掉 `agent/parallel/phase/log` 的方式**跑真实脚本复现过**，并各自补了回归测试。测试 35 → **62**（fixture 35 + node:test 27）。

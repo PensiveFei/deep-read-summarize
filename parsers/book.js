@@ -20,7 +20,7 @@ module.exports = {
       fetchTarget: "书籍全文",
       kindLabel: "书籍（book）",
       steps: [
-        "获取全文：PDF→用 read 或 pwsh 调 pdftotext（若为扫描版报告需 OCR）；EPUB/MOBI→解包或转文本；纯文本→直接读取。",
+        "获取全文：PDF→优先用 read 读取；读不出正文时用 pdftotext（poppler 命令行工具，三平台通用；未装时按系统装：macOS `brew install poppler`、Windows `winget install poppler`、Debian/Ubuntu `apt install poppler-utils`）；扫描版 PDF 需 OCR；EPUB/MOBI→解包或转文本；纯文本→直接读取。",
         "全文写入目标文件（不截断、不加评注），用 read 确认总行数。",
         "识别书籍结构：目录/序言/各章节标题及其行号范围。"
       ],

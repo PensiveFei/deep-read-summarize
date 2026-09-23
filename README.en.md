@@ -72,11 +72,11 @@ Three waves, roughly N+2 sub-agents in total, where N is the number of chunks.
 parsers/         Parsers for each input type, dispatched by type
   book.js        Books: PDF/EPUB/MOBI text extraction, chapter chunking
   paper.js       Papers: arXiv/PDF/HTML structure detection
-  video.js       Video: full transcript (subtitles first; auto-transcribe via scripts/transcribe.ps1 when none)
+  video.js       Video: full transcript (subtitles first; auto-transcribe via scripts/transcribe.js when none)
   web.js         Web pages: main-text extraction
   index.js       Registry: parser discovery and fallback
 schemas/         JSON Schema for the output contract (injected into the script by workflow.js - single source of truth)
-scripts/         lint, security checks
+scripts/         lint, security checks, cross-platform transcription bootstrap (transcribe.js)
 tests/           fixture tests and validation scripts
 workflow.js      The workflow script itself (meta + script)
 ```
@@ -102,7 +102,7 @@ deep-read-summarize is a DSH plugin installable via npm, the dsh.so ecosystem, o
 npm install deep-read-summarize
 
 # or local install (dsh profile directory)
-pnpm add ./deep-read-summarize-0.3.6.tgz
+pnpm add ./deep-read-summarize-0.3.9.tgz
 # then append to the dsh config's dsh.profile.bundles:
 #   - deep-read-summarize
 # restart dsh web (POST /dsh-market/restart)
@@ -177,6 +177,7 @@ Pass this JSON to DSH's workflow tool:
     "transcribe": true,       // video: auto local transcription (faster-whisper) when no subtitles; false skips it — see Video
     "whisperModel": "small",  // video ASR tier: small | base | medium
     "language": "zh",         // video ASR language: use "en" for English-only videos
+    "device": "cpu",          // ASR device: cpu (default) | auto | cuda; auto/cuda needs a CUDA runtime and falls back to cpu
     "requireCitations": true, // whether key conclusions must carry citations
     "includeTimestamps": false,
     "outputDir": "./output",    // note output directory (can point at your Obsidian vault)
@@ -203,12 +204,12 @@ Video text extraction is a **unified pipeline** (the old "three tiers" are gone)
 > **⚠️ To preserve deep-reading quality, processing may take noticeably longer (a deliberate trade-off, not a hang)**: a **subtitle-less** video is transcribed first (roughly 0.5–2× the video length on CPU) before deep reading, so such videos are **much slower than subtitled videos**; in exchange you get a **full transcript + real deep reading**. **Subtitled** videos remain seconds-fast. Please do not mistake the slower transcription for a hang.
 
 1. **Platform subtitles available** (Bilibili's official API AI subtitles / YouTube CC) → **use them directly** (= full text, fastest, zero dependencies).
-2. **No public subtitles** → use the bundled transcription `scripts/transcribe.ps1` (faster-whisper small / int8 / VAD / Chinese) to get the full text.
+2. **No public subtitles** → use the bundled transcription `scripts/transcribe.js` (faster-whisper small / int8 / VAD / Chinese) to get the full text.
 3. **Neither works** → **degrade gracefully**: prompt the user to supply a transcript manually, or fall back to `desc` as background; **never block**.
 
 `options.transcribe`: **default `true`** (auto-transcribe when no subtitles); set `false` to skip transcription (use subtitles/desc or degrade).
 
-**Transcription toolchain (identical for you and the author)**: the script **bootstraps itself** — it uses `uv` to create a **Python 3.12** environment + **Tsinghua mirror** to install `faster-whisper`, downloads the model via `HF_ENDPOINT=https://hf-mirror.com` and **caches it for reuse**; faster-whisper bundles PyAV to decode audio, so **no separate ffmpeg** is needed; **versions are pinned** (Python 3.12 / faster-whisper / uv) so the author's environment matches yours.
+**Transcription toolchain (identical for you and the author)**: the script **bootstraps itself** — it uses `uv` to create a **Python 3.12** environment + **Tsinghua mirror** to install `faster-whisper`, downloads the model via `HF_ENDPOINT=https://hf-mirror.com` and **caches it for reuse**; faster-whisper bundles PyAV to decode audio, so **no separate ffmpeg** is needed; **versions are pinned** (Python 3.12 / faster-whisper / uv) so the author's environment matches yours. The script is written in **Node**, so **Windows / macOS / Linux share one implementation and one command** (`node scripts/transcribe.js --audio <file> --out <txt>`). Transcription runs on **CPU** by default (`options.device`); GPU needs a CUDA runtime (cuBLAS/cuDNN), so `options.device: "auto"` is opt-in and falls back to CPU automatically. Cache location per platform: Windows `%LOCALAPPDATA%\deep-read-summarize`, macOS `~/Library/Caches/deep-read-summarize`, Linux `$XDG_CACHE_HOME/deep-read-summarize`.
 
 > ⚠️ **The first transcription downloads the model first (small ≈ 484 MB, via hf-mirror, not GitHub) and may take a few minutes** — please be patient; **it downloads only once** on your machine, then every later transcription uses the cache and starts instantly. **Only subtitle-less videos trigger transcription** (subtitled videos use their subtitles directly — no trigger, no download).
 

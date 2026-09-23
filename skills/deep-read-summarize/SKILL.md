@@ -21,7 +21,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 ## 输入
 
 用户提供：内容链接或本地文件路径。
-可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / outputDir / tempDir）。
+可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / outputDir / tempDir）。
 
 ## 执行步骤
 
@@ -66,15 +66,15 @@ status: 已完成
 
 - **统一流水线（去三档）**：目标 = 拿到完整逐字稿再精读。
   1. **有平台字幕**（B站 AI 字幕 / YouTube CC / yt-dlp CC）→ 直接用字幕（=全文，最快、零依赖）。
-  2. **无公开字幕** → 用插件自带转写（`scripts/transcribe.ps1`：faster-whisper small / int8 / VAD）得到全文。
+  2. **无公开字幕** → 用插件自带转写（`scripts/transcribe.js`：faster-whisper small / int8 / VAD）得到全文。
   3. 都不行 → 降级提示用户手动提供转写文本，或退回 desc 作背景；**绝不阻塞、绝不自动装重依赖**。
 - `options.transcribe`：**默认 true**（无字幕自动转写）；设为 `false` 则跳过转写（只用字幕/desc 或降级）。
-- **转写工具链**：脚本自举，本机/用户一致——`uv` 建 Python 3.12 环境 + 清华镜像装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并缓存；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**。
+- **转写工具链**：脚本自举，本机/用户一致——`uv` 建 Python 3.12 环境 + 清华镜像装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并缓存；脚本是 **Node** 写的，三平台**同一份实现、同一条命令**（`node <脚本路径> --audio <音频> --out <txt>`）；转写默认 **CPU**（`options.device` 默认 `cpu`），GPU 需自备 CUDA 运行库（设 `options.device: "auto"`，失败自动回退 CPU）；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**。
 - **⚠️ 首次转写会先下载 small 模型（约 484MB，hf-mirror，非 GitHub），可能较慢**——执行转写前**先向用户说明**这是正常的一次性下载，之后缓存复用、秒开；不要当成卡死而中断。
 - **质量/速度**：small/int8 + VAD 静音过滤，中文质量可用且 CPU 友好；有字幕视频不转写（快）。装不上/失败则降级，不静默。
-- YouTube 用 yt-dlp 抓 CC；未装时**绝不下载 exe 二进制**（GitHub 直连易卡死），改用 winget/pip；仍不可用则转写或降级。
+- YouTube 用 yt-dlp 抓 CC；未装时**绝不下载 exe 二进制**（GitHub 直连易卡死），按系统装（Windows `winget install yt-dlp.yt-dlp` / macOS `brew install yt-dlp` / 任意平台 `pip install -U yt-dlp`）；仍不可用则转写或降级。
 - 运行 yt-dlp 加 `--socket-timeout 15 --retries 3` 防超时。
-- **平台限制**：无字幕自动转写依赖 `scripts/transcribe.ps1`（PowerShell + `uv` + Python 3.12），**目前仅在 Windows 可用**；macOS/Linux 请让用户提供转写文本，或用平台字幕/desc 降级。
+- **跨平台**：Windows / macOS / Linux **同等支持**（0.3.9 起）。无字幕自动转写走 `scripts/transcribe.js`（Node + `uv` + Python 3.12），三平台命令一致：`node <脚本路径> --audio <音频> --out <txt> [--device cpu]`；脚本定位命令按系统选（Windows `Get-ChildItem -Path $env:USERPROFILE/.dsh -Recurse -Filter transcribe.js`，macOS/Linux `find "$HOME/.dsh" -name transcribe.js`）。缓存目录按平台取：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`。若 `node` 不在 PATH（macOS 从图形界面启动时常见）则直接降级，不要为此安装 Node。
 - 默认不标时间戳（`options.includeTimestamps` 可开）
 
 ## 参考

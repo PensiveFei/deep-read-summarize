@@ -196,16 +196,17 @@ test('workflow: transcribe=false actually changes the video prompt', () => {
   const on = vp.buildPrompt('https://b23.tv/x', { tempDir: './.tmp' });
   const off = vp.buildPrompt('https://b23.tv/x', { tempDir: './.tmp', transcribe: false });
   assert.notStrictEqual(on, off, 'transcribe:false used to produce a byte-identical prompt');
-  assert.ok(on.includes('transcribe.ps1'));
-  assert.ok(!off.includes('-Model '), 'transcribe=false must not ask for a transcription run');
+  assert.ok(on.includes('transcribe.js'), 'the prompt must point at the cross-platform script');
+  assert.ok(!on.includes('transcribe.ps1'), 'the Windows-only PowerShell script must be gone');
+  assert.ok(!off.includes('--model '), 'transcribe=false must not ask for a transcription run');
   assert.ok(off.includes('转写已禁用'));
 });
 
 test('workflow: whisperModel and language reach the transcription command', () => {
   const vp = wf.parsers.resolve('video');
   assert.ok(vp.buildPrompt('u', { tempDir: './.tmp', whisperModel: 'medium', language: 'en' })
-    .includes('-Model medium -Language en'), 'documented ASR options must be honoured');
-  assert.ok(vp.buildPrompt('u', { tempDir: './.tmp' }).includes('-Model small -Language zh'),
+    .includes('--device cpu --model medium --language en'), 'documented ASR options must be honoured');
+  assert.ok(vp.buildPrompt('u', { tempDir: './.tmp' }).includes('--device cpu --model small --language zh'),
     'defaults stay small/zh');
 });
 
@@ -213,7 +214,7 @@ test('workflow: the script forwards whisperModel and language to the parser', as
   const r = await runScript({ input: 'https://b23.tv/x', type: 'video', options: { whisperModel: 'base', language: 'ja' } },
     makeAgent({ kind: 'video' }));
   const fetchPrompt = r.calls.find(function (c) { return c.label === '获取+分块'; }).prompt;
-  assert.ok(fetchPrompt.includes('-Model base -Language ja'), 'options must survive the script -> parser boundary');
+  assert.ok(fetchPrompt.includes('--model base --language ja'), 'options must survive the script -> parser boundary');
 });
 
 test('plugin: config is validated and folded into the skill args', () => {
@@ -274,4 +275,124 @@ test('cache: the utility is reachable through the package exports map', () => {
   const pkg = require('../package.json');
   assert.strictEqual(pkg.exports['./lib/cache'], './lib/cache.js');
   assert.ok(fs.existsSync(path.join(__dirname, '..', 'lib', 'cache.js')));
+});
+
+// ============================================================================
+// 跨平台转写引导脚本（0.3.9）
+// transcribe.js 只在宿主 shell 里跑（不进 workflow 沙箱），平台差异集中在四个纯函数；
+// 它们都接受注入的 platform/env/home，所以任意 OS 上都能跑全平台矩阵断言。
+// ============================================================================
+const transcribe = require('../scripts/transcribe.js');
+
+test('transcribe: cache root matches the documented per-platform locations', () => {
+  // Windows 必须与 0.3.6-0.3.8 的 transcribe.ps1 完全一致：
+  // 老用户已经下过 484MB 模型，路径一变就要重下。
+  assert.strictEqual(
+    transcribe.cacheRoot({ platform: 'win32', env: { LOCALAPPDATA: 'C:/AppData/Local' }, home: 'C:/acct' }),
+    path.win32.join('C:/AppData/Local', 'deep-read-summarize'));
+  assert.strictEqual(
+    transcribe.cacheRoot({ platform: 'win32', env: {}, home: 'C:/acct' }),
+    path.win32.join('C:/acct/AppData/Local', 'deep-read-summarize'),
+    'LOCALAPPDATA absent -> fall back to the standard Windows location');
+  assert.strictEqual(transcribe.cacheRoot({ platform: 'darwin', env: {}, home: '/Users/me' }),
+    '/Users/me/Library/Caches/deep-read-summarize');
+  assert.strictEqual(transcribe.cacheRoot({ platform: 'linux', env: {}, home: '/home/me' }),
+    '/home/me/.cache/deep-read-summarize');
+  assert.strictEqual(transcribe.cacheRoot({ platform: 'linux', env: { XDG_CACHE_HOME: '/x' }, home: '/home/me' }),
+    '/x/deep-read-summarize', 'XDG_CACHE_HOME wins on Linux');
+});
+
+test('transcribe: venv interpreter path is per-platform', () => {
+  assert.strictEqual(transcribe.venvPython('/v', { platform: 'darwin' }), '/v/bin/python');
+  assert.strictEqual(transcribe.venvPython('/v', { platform: 'linux' }), '/v/bin/python');
+  assert.strictEqual(transcribe.venvPython('C:/v', { platform: 'win32' }),
+    path.win32.join('C:/v', 'Scripts', 'python.exe'));
+});
+
+test('transcribe: the uv install hint follows the platform', () => {
+  assert.ok(transcribe.uvInstallHint({ platform: 'darwin' }).includes('brew install uv'));
+  assert.ok(transcribe.uvInstallHint({ platform: 'win32' }).includes('winget install astral-sh.uv'));
+  assert.ok(transcribe.uvInstallHint({ platform: 'linux' }).includes('astral.sh/uv/install.sh'));
+});
+
+test('transcribe: uv discovery prefers PATH, then the usual install dirs', () => {
+  const has = (list) => (p) => list.indexOf(p) >= 0;
+  assert.strictEqual(
+    transcribe.findUv({ platform: 'linux', env: { PATH: '/usr/bin:/bin' }, home: '/home/me',
+      isFile: has(['/usr/bin/uv']) }), '/usr/bin/uv');
+  assert.strictEqual(
+    transcribe.findUv({ platform: 'darwin', env: { PATH: '/usr/bin' }, home: '/Users/me',
+      isFile: has(['/opt/homebrew/bin/uv']) }), '/opt/homebrew/bin/uv',
+    'Homebrew on Apple silicon must be found even when it is not on PATH');
+  assert.strictEqual(
+    transcribe.findUv({ platform: 'darwin', env: { PATH: '/usr/bin' }, home: '/Users/me',
+      isFile: has(['/Users/me/.local/bin/uv']) }), '/Users/me/.local/bin/uv');
+  assert.strictEqual(
+    transcribe.findUv({ platform: 'win32', env: { PATH: 'C:/bin' }, home: 'C:/acct',
+      isFile: has([path.win32.join('C:/bin', 'uv.exe')]) }), path.win32.join('C:/bin', 'uv.exe'));
+  assert.strictEqual(transcribe.findUv({ platform: 'darwin', env: { PATH: '/usr/bin' }, home: '/Users/me',
+    isFile: () => false }), null, 'no uv -> null (the caller degrades with an install hint)');
+});
+
+test('transcribe: CLI parsing accepts long, = and short forms', () => {
+  const a = transcribe.parseArgs(['--audio', 'a.m4a', '--out', 'o.txt', '--model', 'medium', '--language', 'en']);
+  assert.deepStrictEqual([a.audio, a.out, a.model, a.language], ['a.m4a', 'o.txt', 'medium', 'en']);
+  assert.strictEqual(a.device, 'cpu', 'CPU is the default: GPU needs a CUDA runtime we do not install');
+
+  const b = transcribe.parseArgs(['--audio=a.m4a', '--out=o.txt', '--device=auto']);
+  assert.deepStrictEqual([b.audio, b.out, b.device], ['a.m4a', 'o.txt', 'auto']);
+
+  const c = transcribe.parseArgs(['-a', 'a.m4a', '-o', 'o.txt', '-l', 'ja']);
+  assert.deepStrictEqual([c.audio, c.out, c.language], ['a.m4a', 'o.txt', 'ja']);
+
+  assert.strictEqual(transcribe.parseArgs(['--self-check']).selfCheck, true);
+  assert.deepStrictEqual(transcribe.parseArgs(['nonsense']).unknown, ['nonsense']);
+});
+
+test('transcribe: the runner never leaves a half-written transcript behind', () => {
+  // 调用方按「输出文件非空且稳定」判断转写完成，所以必须先收集全部分段再落盘，
+  // 否则中途失败会留下半截文本被当成成功。
+  assert.ok(transcribe.PY_RUNNER.includes('segments, info = run(device)'),
+    'segments must be collected before the file is opened');
+  assert.ok(/with open\(os\.environ\['DRS_OUT'\]/.test(transcribe.PY_RUNNER));
+  assert.strictEqual(transcribe.PY_RUNNER.indexOf('with open'),
+    transcribe.PY_RUNNER.lastIndexOf('with open'), 'exactly one write, after collection');
+});
+
+test('skill: the Windows-only transcription caveat is gone', () => {
+  const content = fs.readFileSync(path.join(__dirname, '..', 'skills', 'deep-read-summarize', 'SKILL.md'), 'utf8');
+  assert.ok(!content.includes('仅在 Windows 可用'), 'the macOS/Linux limitation must be lifted');
+  assert.ok(content.includes('transcribe.js'), 'the skill must point at the cross-platform script');
+  assert.ok(!content.includes('transcribe.ps1'), 'no stale reference to the PowerShell script');
+});
+
+test('video prompt: gives both Windows and POSIX ways to locate the script', () => {
+  const on = wf.parsers.resolve('video').buildPrompt('u', { tempDir: './.tmp' });
+  assert.ok(on.includes('Get-ChildItem') && on.includes('$HOME/.dsh'),
+    'the agent picks the locate command for its own OS');
+  assert.ok(on.includes('brew install yt-dlp') && on.includes('winget install yt-dlp'),
+    'both package managers must be offered');
+  assert.ok(!on.includes('--device cuda'), 'GPU is opt-in, never silently requested');
+});
+
+test('workflow: options.device reaches the transcription command', () => {
+  const vp = wf.parsers.resolve('video');
+  assert.ok(vp.buildPrompt('u', { tempDir: './.tmp' }).includes('--device cpu'),
+    'CPU is the default: GPU needs a CUDA runtime we deliberately do not install');
+  assert.ok(vp.buildPrompt('u', { tempDir: './.tmp', device: 'auto' }).includes('--device auto'),
+    'options.device must be honoured, not documented-and-ignored');
+});
+
+test('workflow: the script forwards device to the parser', async () => {
+  const r = await runScript({ input: 'https://b23.tv/x', type: 'video', options: { device: 'auto' } },
+    makeAgent({ kind: 'video' }));
+  const fetchPrompt = r.calls.find(function (c) { return c.label === '获取+分块'; }).prompt;
+  assert.ok(fetchPrompt.includes('--device auto'), 'options must survive the script -> parser boundary');
+});
+
+test('video prompt: the transcription block is a single numbered step', () => {
+  const on = wf.parsers.resolve('video').buildPrompt('u', { tempDir: './.tmp' });
+  assert.ok(!/[0-9]+\.\s+①/.test(on),
+    'the ①-⑥ sub-steps must not be numbered as a top-level step of their own');
+  assert.ok(/[0-9]+\. 转写执行/.test(on), 'the block still gets exactly one top-level number');
 });

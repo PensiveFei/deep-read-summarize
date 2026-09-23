@@ -1,6 +1,6 @@
 {
   "name": "deep-read-summarize",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "description": "Deep reading & summarization for DSH: books/papers/videos/web → structured Obsidian notes. Plugin parsers, MapReduce deep-read, JSON Schema-constrained sub-tasks.",
   "type": "commonjs",
   "main": "index.js",

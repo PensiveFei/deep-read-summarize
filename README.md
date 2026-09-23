@@ -72,11 +72,11 @@ Obsidian 笔记
 parsers/         各输入类型的解析器，按类型分发
   book.js        书籍：PDF/EPUB/MOBI 文本提取、章节分块
   paper.js       论文：arXiv/PDF/HTML 结构识别
-  video.js       视频：完整逐字稿（字幕优先，无字幕自动转写，走 scripts/transcribe.ps1）
+  video.js       视频：完整逐字稿（字幕优先，无字幕自动转写，走 scripts/transcribe.js）
   web.js         网页：正文提取
   index.js       注册表：解析器发现与回退
 schemas/         输出约束的 JSON Schema（波次1 由 workflow.js 注入脚本，单一真相）
-scripts/         lint、安全检查
+scripts/         lint、安全检查、跨平台转写引导（transcribe.js）
 tests/           fixture 测试与验证脚本
 workflow.js      workflow 脚本本体（meta + script）
 ```
@@ -102,7 +102,7 @@ deep-read-summarize 是 DSH 插件，可通过 npm、dsh.so 生态或本地安�
 npm install deep-read-summarize
 
 # 或本地安装（dsh profile 目录）
-pnpm add ./deep-read-summarize-0.3.6.tgz
+pnpm add ./deep-read-summarize-0.3.9.tgz
 # 然后在 dsh 配置的 dsh.profile.bundles 追加:
 #   - deep-read-summarize
 # 重启 dsh web 即可（POST /dsh-market/restart）
@@ -177,6 +177,7 @@ parsers: book, paper, video, web
     "transcribe": true,       // 视频：无字幕时自动本地转写（faster-whisper）；false 则跳过转写，见「视频」节
     "whisperModel": "small",  // 视频转写模型档位：small | base | medium
     "language": "zh",         // 视频转写语言：纯英文视频可设 "en"
+    "device": "cpu",          // 转写设备：cpu（默认）| auto | cuda；auto/cuda 需自备 CUDA 运行库，失败自动回退 cpu
     "requireCitations": true, // 关键结论是否必须标注出处
     "includeTimestamps": false,
     "outputDir": "./output",    // 笔记输出目录（可指向 Obsidian 仓库）
@@ -203,12 +204,12 @@ parsers: book, paper, video, web
 > **⚠️ 为保证精读质量，处理时间可能略长（刻意取舍，不是卡死）**：**无字幕**视频会先做一次转写（CPU 上约为视频时长的 0.5–2×）再精读，所以这类视频整体会**明显比有字幕视频慢**；换来的是**完整逐字稿 + 真正的精读**。**有字幕**视频仍是秒级。请勿把转写的较慢误判为卡死。
 
 1. **有平台字幕**（B站官方 API 的 AI 字幕 / YouTube CC）→ **直接用字幕**（=全文，最快、零依赖）。
-2. **无公开字幕** → 用插件自带转写 `scripts/transcribe.ps1`（faster-whisper small / int8 / VAD / 中文）得到全文。
+2. **无公开字幕** → 用插件自带转写 `scripts/transcribe.js`（faster-whisper small / int8 / VAD / 中文）得到全文。
 3. 都不行 → **降级**：提示手动提供转写文本，或退回 `desc` 作背景；**绝不阻塞**。
 
 `options.transcribe`：**默认 `true`**（无字幕自动转写）；设为 `false` 则跳过转写（只用字幕/desc 或降级）。
 
-**转写工具链（本机/用户一致）**：脚本**自举**——用 `uv` 建 **Python 3.12** 环境 + **清华镜像**装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并**缓存复用**；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**；**版本已锁定**（Python 3.12 / faster-whisper / uv），保证本机与用户环境一致。
+**转写工具链（本机/用户一致）**：脚本**自举**——用 `uv` 建 **Python 3.12** 环境 + **清华镜像**装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并**缓存复用**；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**；**版本已锁定**（Python 3.12 / faster-whisper / uv），保证本机与用户环境一致。脚本是 **Node** 写的，**Windows / macOS / Linux 同一份实现、同一条命令**（`node scripts/transcribe.js --audio <音频> --out <txt>`）；转写默认走 **CPU**（`options.device` 默认 `cpu`），GPU 需自备 CUDA 运行库（cuBLAS/cuDNN），可设 `options.device: "auto"` 尝试，失败会自动回退 CPU。缓存目录按平台取：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`。
 
 > ⚠️ **首次转写会先下载模型（small 约 484MB，走 hf-mirror，非 GitHub），可能需要几分钟**，请耐心等待；**本机只下这一次**，之后所有视频转写用缓存、秒开。**只有「无字幕」视频才会触发转写**（有字幕的视频直接用字幕，不触发、不下载）。
 

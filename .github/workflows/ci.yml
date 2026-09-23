@@ -38,3 +38,24 @@ jobs:
 
       - name: Validate
         run: npm run validate
+
+  # 转写引导脚本的平台分支只能在真实 runner 上验证：三个 OS 各跑一次 --self-check
+  # （只解析路径，不安装、不下载、不联网）。真正的转写不在 CI 里跑——需要 uv 与
+  # 484MB 模型，成本过高，由本机真机验证覆盖。
+  cross-platform:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Transcribe bootstrap resolves platform paths
+        run: node scripts/transcribe.js --self-check
