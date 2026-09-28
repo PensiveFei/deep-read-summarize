@@ -102,7 +102,7 @@ deep-read-summarize is a DSH plugin installable via npm, the dsh.so ecosystem, o
 npm install deep-read-summarize
 
 # or local install (dsh profile directory)
-pnpm add ./deep-read-summarize-0.3.9.tgz
+pnpm add ./deep-read-summarize-0.3.10.tgz
 # then append to the dsh config's dsh.profile.bundles:
 #   - deep-read-summarize
 # restart dsh web (POST /dsh-market/restart)
@@ -178,6 +178,7 @@ Pass this JSON to DSH's workflow tool:
     "whisperModel": "small",  // video ASR tier: small | base | medium
     "language": "zh",         // video ASR language: use "en" for English-only videos
     "device": "cpu",          // ASR device: cpu (default) | auto | cuda; auto/cuda needs a CUDA runtime and falls back to cpu
+    "maxRetries": 0,          // quality-check retries (default 0 = no retry; retrying is noticeably slower)
     "requireCitations": true, // whether key conclusions must carry citations
     "includeTimestamps": false,
     "outputDir": "./output",    // note output directory (can point at your Obsidian vault)
@@ -209,7 +210,7 @@ Video text extraction is a **unified pipeline** (the old "three tiers" are gone)
 
 `options.transcribe`: **default `true`** (auto-transcribe when no subtitles); set `false` to skip transcription (use subtitles/desc or degrade).
 
-**Transcription toolchain (identical for you and the author)**: the script **bootstraps itself** — it uses `uv` to create a **Python 3.12** environment + **Tsinghua mirror** to install `faster-whisper`, downloads the model via `HF_ENDPOINT=https://hf-mirror.com` and **caches it for reuse**; faster-whisper bundles PyAV to decode audio, so **no separate ffmpeg** is needed; **versions are pinned** (Python 3.12 / faster-whisper / uv) so the author's environment matches yours. The script is written in **Node**, so **Windows / macOS / Linux share one implementation and one command** (`node scripts/transcribe.js --audio <file> --out <txt>`). Transcription runs on **CPU** by default (`options.device`); GPU needs a CUDA runtime (cuBLAS/cuDNN), so `options.device: "auto"` is opt-in and falls back to CPU automatically. Cache location per platform: Windows `%LOCALAPPDATA%\deep-read-summarize`, macOS `~/Library/Caches/deep-read-summarize`, Linux `$XDG_CACHE_HOME/deep-read-summarize`.
+**Transcription toolchain (identical for you and the author)**: the script **bootstraps itself** — it uses `uv` to create a **Python 3.12** environment + **Tsinghua mirror** to install `faster-whisper`, downloads the model via `HF_ENDPOINT=https://hf-mirror.com` and **caches it for reuse**; faster-whisper bundles PyAV to decode audio, so **no separate ffmpeg** is needed; **versions are pinned** (Python 3.12 / faster-whisper / uv) so the author's environment matches yours. The script is written in **Node**, so **Windows / macOS / Linux share one implementation and one command** (`node scripts/transcribe.js --audio <file> --out <txt>`). Transcription runs on **CPU** by default (`options.device`); GPU needs a CUDA runtime (cuBLAS/cuDNN), so `options.device: "auto"` is opt-in and falls back to CPU automatically. Cache location per platform: Windows `%LOCALAPPDATA%\deep-read-summarize`, macOS `~/Library/Caches/deep-read-summarize`, Linux `$XDG_CACHE_HOME/deep-read-summarize`. Python provisioning uses a mirror for speed and **falls back to a direct GitHub download when the mirror fails** (a dead mirror must not make the feature uninstallable); override it with the `DRS_UV_PYTHON_MIRROR` environment variable (empty string = never use a mirror).
 
 > ⚠️ **The first transcription downloads the model first (small ≈ 484 MB, via hf-mirror, not GitHub) and may take a few minutes** — please be patient; **it downloads only once** on your machine, then every later transcription uses the cache and starts instantly. **Only subtitle-less videos trigger transcription** (subtitled videos use their subtitles directly — no trigger, no download).
 

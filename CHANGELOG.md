@@ -3,6 +3,31 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.10] — 2026-09-24
+
+对**已发布的 0.3.9** 做的一轮审计修复。审计对象是 **npm 上那份字节**（不是工作区）：先确认 29 个文件与 tag `v0.3.9` **逐字节一致**，再在解包目录里跑该包自带的门禁（lint / security / 35 fixture / 38 node:test 全绿），然后逐项找问题。
+
+### Fixed
+
+- **uv 的 CPython 镜像已失效，会让「首次安装」的机器彻底装不上**（P1；继承自 0.3.6 的 PowerShell 脚本，不是 0.3.9 新引入）。镜像写死 `ghproxy.com`，而它现在 **301 到 `ghfast.top` 并丢掉路径** —— 返回的是 HTML 而不是资产，uv 拿到 HTML 报 `Invalid gzip header`，而且**不会自己回退 GitHub**。真机验证：`uv venv --python 3.11` 带该镜像 → 退出码 2 失败；不带镜像（对照）→ 成功。踩到的恰好是**本机没有任何 Python 3.12 的新用户**。
+  - 现在：默认镜像换成实测可用的继任服务，**失败自动改用直连 GitHub 重试一次**（并清理失败留下的半个 venv）；另可用环境变量 `DRS_UV_PYTHON_MIRROR` 覆盖（空字符串 = 完全不用镜像）。
+- **转写结果为 0 字节时仍返回成功**（P2）。纯静音 / 纯 BGM 视频会被 VAD 全部滤掉，脚本却以退出码 0 结束、只留一条 stderr 警告，并且留下一个 0 字节文件；而调用方按「输出文件非空」判断完成、提示词里又有一条「日志出现 DONE」——**空逐字稿会被当成转写成功**，再拿去做精读。现在：删除空文件、以退出码 **3** 结束，并明确要求按降级处理。
+- **`--audio` 指向目录时报错晦涩**（P3）：此前 `existsSync` 直接放行，最后抛出 python 的 `PermissionError: [Errno 13] Permission denied`。现在先校验是否为普通文件，直接报「不是文件（是不是给了目录？）」。
+
+### Changed
+
+- **`docs/RELEASE.md` 两处与实况不符**（P2，会随包发给用户）：
+  - 「当前版本速览」停留在 v0.1.x / v0.2.x + 计划中的 v1.0.0，**完全没有 0.3.x**；现在补全，并加了一道断言守着它（发版忘了更新会让 `npm run test:node` 变红）。
+  - 发布流程教的是「建 Release → 触发 publish.yml」+「用 `npm view` 验证」—— **恰好就是实测踩到的两个坑**。现在改为：手动 dispatch 为主路径；Release 事件投递不稳、只当记录；并写明判据（看日志的 `+ 包名@版本` 与 provenance；registry 有 1–2 分钟延迟，当场查必然 E404；dry-run 全绿不算发布成功）。
+- `README.md` / `README.en.md`：选项示例补上 `maxRetries`（SKILL.md 与代码本来就有它）；转写工具链一节补上「镜像可覆盖 + 失败自动回退直连」。
+- `parsers/video.js` 提示词：转写步骤明确「脚本以非 0 退出也算失败」，包含「结果为空」的情况。
+
+### Compatibility
+
+- 无破坏性变更，默认值与既有行为不变（`device` 仍默认 `cpu`、`transcribe` 仍默认 `true`）。
+- 唯一可感知的变化：**纯静音音频现在会「失败」而不是「成功返回空文本」** —— 这正是修复目的，调用方本就应该走降级路径。
+- `DRS_UV_PYTHON_MIRROR` 是新增的可选环境变量；不设时行为与 0.3.9 相同（只是默认镜像换成了还活着的那个）。
+
 ## [0.3.9] — 2026-09-22
 
 **macOS / Linux 支持**。这一版补上最后一块 Windows-only 的拼图：此前「无字幕视频自动转写」依赖 `scripts/transcribe.ps1`（PowerShell），SKILL.md 里明确写着「**目前仅在 Windows 可用**」；现在换成跨平台的 Node 脚本，三平台同一份实现、同一条命令。

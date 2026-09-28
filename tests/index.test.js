@@ -396,3 +396,61 @@ test('video prompt: the transcription block is a single numbered step', () => {
     'the ①-⑥ sub-steps must not be numbered as a top-level step of their own');
   assert.ok(/[0-9]+\. 转写执行/.test(on), 'the block still gets exactly one top-level number');
 });
+
+// ============================================================================
+// 0.3.10 回归：审计 0.3.9 时查出的三个问题
+// ============================================================================
+const { spawnSync } = require('node:child_process');
+
+test('transcribe: the uv mirror is configurable and falls back to a direct download', () => {
+  // 旧的 ghproxy.com 已 301 到 ghfast.top 并丢掉路径（返回 HTML 而不是资产），
+  // uv 拿到 HTML 会报 "Invalid gzip header" 且不会自己回退 —— 于是「慢但能装」变成「装不上」。
+  assert.ok(transcribe.UV_PYTHON_INSTALL_MIRROR_DEFAULT.indexOf('ghproxy.com') === -1,
+    'ghproxy.com moved and drops the path; it must not come back as the default');
+  assert.strictEqual(transcribe.resolveUvMirror({}), transcribe.UV_PYTHON_INSTALL_MIRROR_DEFAULT);
+  assert.strictEqual(transcribe.resolveUvMirror({ DRS_UV_PYTHON_MIRROR: 'https://mirror.example/' }),
+    'https://mirror.example/', 'env override must win');
+  assert.strictEqual(transcribe.resolveUvMirror({ DRS_UV_PYTHON_MIRROR: '' }), '',
+    'empty string = never use a mirror');
+
+  const attempts = transcribe.venvEnvAttempts({ PATH: '/x' }, 'https://mirror.example/');
+  assert.strictEqual(attempts.length, 2, 'mirror first, then a direct download');
+  assert.strictEqual(attempts[0].env.UV_PYTHON_INSTALL_MIRROR, 'https://mirror.example/');
+  assert.ok(!('UV_PYTHON_INSTALL_MIRROR' in attempts[1].env), 'the fallback must not carry the mirror');
+  assert.strictEqual(attempts[1].env.PATH, '/x', 'the base env must survive');
+
+  const directOnly = transcribe.venvEnvAttempts({}, '');
+  assert.strictEqual(directOnly.length, 1, 'no mirror configured -> a single direct attempt');
+  assert.strictEqual(directOnly[0].env.UV_PYTHON_INSTALL_MIRROR, undefined);
+});
+
+test('transcribe: a 0-byte transcript is a failure, not a success', () => {
+  // 调用方按「输出文件非空且稳定」判断完成，提示词里还有一条「日志出现 DONE」；
+  // 两者叠加会让纯静音视频的空逐字稿被当成转写成功，再拿去精读。
+  assert.strictEqual(transcribe.judgeTranscript(57).ok, true);
+  assert.strictEqual(transcribe.judgeTranscript(57).code, 0);
+  const empty = transcribe.judgeTranscript(0);
+  assert.strictEqual(empty.ok, false, 'a silent video must not look like a successful transcription');
+  assert.notStrictEqual(empty.code, 0, 'a distinct non-zero exit code is what makes the caller degrade');
+  assert.ok(/降级/.test(empty.message), 'the message must tell the caller to degrade');
+});
+
+test('transcribe: --audio pointing at a directory fails fast and leaves no output', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'drs-audio-'));
+  const out = path.join(dir, 'out.txt');
+  try {
+    const r = spawnSync(process.execPath,
+      [path.join(__dirname, '..', 'scripts', 'transcribe.js'), '--audio', dir, '--out', out],
+      { encoding: 'utf8' });
+    assert.notStrictEqual(r.status, 0, 'a directory must be rejected');
+    assert.ok(/不是文件/.test(r.stderr), 'expected a clear message, got: ' + r.stderr);
+    assert.ok(!fs.existsSync(out), 'no output file may be left behind');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('docs: RELEASE.md lists the version we are about to ship', () => {
+  const rel = fs.readFileSync(path.join(__dirname, '..', 'docs', 'RELEASE.md'), 'utf8');
+  const ver = require('../package.json').version;
+  assert.ok(rel.indexOf('v' + ver) >= 0,
+    'docs/RELEASE.md 的「当前版本速览」必须包含当前版本 v' + ver + '（每次发版都要更新，别再让它停在旧版本）');
+});

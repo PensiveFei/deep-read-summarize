@@ -24,9 +24,14 @@ const path = require('node:path');
 // 版本锁定：保证作者机器与用户机器跑的是同一套（见 README「转写工具链」）。
 const PY_VERSION = '3.12';
 const PYPI_MIRROR = 'https://pypi.tuna.tsinghua.edu.cn/simple';
-// uv 拉 CPython 走的是 GitHub（python-build-standalone），在部分网络下极慢 → 走镜像。
-const UV_PYTHON_INSTALL_MIRROR =
-  'https://ghproxy.com/https://github.com/astral-sh/python-build-standalone/releases/download';
+// uv 拉 CPython 走的是 GitHub（python-build-standalone），在部分网络下极慢 → 默认走镜像加速。
+// ⚠️ 镜像会失效，而且代价很大：旧的 ghproxy.com 现在 301 到 ghfast.top 并丢掉路径，返回的是
+//    HTML 而不是资产；uv 拿到 HTML 会报 "Invalid gzip header"，**不会**自己回退 GitHub ——
+//    于是「慢但能装」变成「彻底装不上」，而踩到的恰好是没有 3.12 的新用户。
+//    所以镜像只当加速用：失败后自动改用直连再试一次（见 venvEnvAttempts）。
+// 覆盖方式：环境变量 DRS_UV_PYTHON_MIRROR（设为空字符串 = 完全不使用镜像）。
+const UV_PYTHON_INSTALL_MIRROR_DEFAULT =
+  'https://ghfast.top/https://github.com/astral-sh/python-build-standalone/releases/download';
 const HF_ENDPOINT = 'https://hf-mirror.com';
 const UV_INSTALL_SH = 'curl -LsSf https://astral.sh/uv/install.sh | sh';
 const CACHE_DIR_NAME = 'deep-read-summarize';
@@ -47,9 +52,7 @@ function context(overrides) {
     platform: o.platform || process.platform,
     env: o.env || process.env,
     home: o.home || os.homedir(),
-    isFile: o.isFile || function (p) {
-      try { return fs.statSync(p).isFile(); } catch (e) { return false; }
-    }
+    isFile: o.isFile || isFileAt
   };
 }
 
@@ -119,6 +122,51 @@ function findUv(overrides) {
     if (c.isFile(candidates[i])) return candidates[i];
   }
   return null;
+}
+
+/** 当前生效的 uv CPython 镜像；返回空串表示不用镜像（直连 GitHub）。 */
+function resolveUvMirror(env) {
+  const e = env || process.env;
+  const v = e.DRS_UV_PYTHON_MIRROR;
+  if (v === undefined) return UV_PYTHON_INSTALL_MIRROR_DEFAULT;
+  return String(v).trim();
+}
+
+/**
+ * 创建 venv 时要依次尝试的环境变量：先镜像（若配置了），失败再直连 GitHub。
+ * 返回 [{env, label}]，调用方按顺序尝试。
+ */
+function venvEnvAttempts(baseEnv, mirror) {
+  const list = [];
+  if (mirror) {
+    const withMirror = Object.assign({}, baseEnv);
+    withMirror.UV_PYTHON_INSTALL_MIRROR = mirror;
+    list.push({ env: withMirror, label: '镜像 ' + mirror });
+  }
+  const direct = Object.assign({}, baseEnv);
+  delete direct.UV_PYTHON_INSTALL_MIRROR;
+  list.push({ env: direct, label: '直连 GitHub' });
+  return list;
+}
+
+/**
+ * 判定转写产物是否可用。
+ * 0 字节 = VAD 把整段音频滤掉了（纯静音 / 纯 BGM）或解码失败。此时**不能算成功**：
+ * 调用方按「输出文件非空且稳定」判断完成，而提示词里还有一条「日志出现 DONE」——
+ * 两者叠加会让空逐字稿被当成转写成功，再拿去做精读。所以删掉空文件并以非 0 退出（code 3）。
+ */
+function judgeTranscript(bytes) {
+  if (bytes > 0) return { ok: true, code: 0, message: '' };
+  return {
+    ok: false,
+    code: 3,
+    message: '转写结果为空（0 字节）：音频可能是纯静音 / 纯音乐，或解码失败。已删除空输出文件，请按降级处理（让用户提供文案，或用 options.transcribe=false）。'
+  };
+}
+
+/** 路径是否为普通文件；目录一律拒绝（否则会把整个目录交给解码器，报出难懂的错误）。 */
+function isFileAt(p) {
+  try { return fs.statSync(p).isFile(); } catch (e) { return false; }
 }
 
 /** 解析命令行（支持 --k v、--k=v、-k v 三种写法）。 */
@@ -237,6 +285,7 @@ function main(argv) {
     return fail('--audio 与 --out 都是必填的。');
   }
   if (!fs.existsSync(args.audio)) return fail('音频文件不存在：' + args.audio);
+  if (!isFileAt(args.audio)) return fail('--audio 不是文件（是不是给了目录？）：' + args.audio);
   if (uv === null) {
     return fail('没有找到 uv。请先安装：' + uvInstallHint(c) + '（装好后重跑本脚本；或改用 options.transcribe=false / 手动提供转写文本降级）');
   }
@@ -247,12 +296,25 @@ function main(argv) {
     fs.mkdirSync(path.dirname(path.resolve(args.out)), { recursive: true });
 
     const childEnv = Object.assign({}, process.env);
-    childEnv.UV_PYTHON_INSTALL_MIRROR = UV_PYTHON_INSTALL_MIRROR;
 
-    // 1) venv：优先复用已装好的 3.12，没有才让 uv 装（走镜像）
+    // 1) venv：优先复用已装好的 3.12，没有才让 uv 装。
+    //    镜像只用于加速；失败就换直连重试 —— 镜像挂掉不该让用户彻底装不上。
     if (!fs.existsSync(py)) {
       process.stdout.write('[transcribe] 创建 venv（Python ' + PY_VERSION + '）：' + venvDir + '\n');
-      runStep(uv, ['venv', '--python', PY_VERSION, venvDir], childEnv, 'uv venv');
+      const attempts = venvEnvAttempts(childEnv, resolveUvMirror(process.env));
+      let lastErr = null;
+      for (let i = 0; i < attempts.length; i++) {
+        try {
+          runStep(uv, ['venv', '--python', PY_VERSION, venvDir], attempts[i].env, 'uv venv');
+        } catch (e) { lastErr = e; }
+        if (fs.existsSync(py)) break;
+        // 失败的尝试可能留下半个 venv 目录，重试前先清掉
+        try { fs.rmSync(venvDir, { recursive: true, force: true }); } catch (e) { /* 清不掉就让下一次尝试自己报错 */ }
+        if (i + 1 < attempts.length) {
+          process.stderr.write('[transcribe] 用 ' + attempts[i].label + ' 创建 venv 失败，改用 ' + attempts[i + 1].label + ' 重试…\n');
+        }
+      }
+      if (!fs.existsSync(py)) throw (lastErr || new Error('uv venv 失败：' + venvDir));
     }
 
     // 2) faster-whisper：只在 import 失败时才装（离线/已装时零网络请求）
@@ -281,8 +343,11 @@ function main(argv) {
 
     const bytes = fs.statSync(args.out).size;
     process.stdout.write('TRANSCRIBED ' + bytes + ' bytes to ' + args.out + '\n');
-    if (bytes === 0) {
-      process.stderr.write('[transcribe] 输出为 0 字节：音频可能是纯静音（VAD 过滤）或解码失败，请按降级处理。\n');
+    const verdict = judgeTranscript(bytes);
+    if (!verdict.ok) {
+      // 删掉空文件：留着它会让「文件存在」被当成完成
+      try { fs.rmSync(args.out, { force: true }); } catch (e) { /* 删不掉也要如实报错 */ }
+      return fail(verdict.message, verdict.code);
     }
     return 0;
   } catch (e) {
@@ -296,6 +361,11 @@ if (require.main === module) {
 
 module.exports = {
   cacheRoot: cacheRoot,
+  resolveUvMirror: resolveUvMirror,
+  venvEnvAttempts: venvEnvAttempts,
+  judgeTranscript: judgeTranscript,
+  isFileAt: isFileAt,
+  UV_PYTHON_INSTALL_MIRROR_DEFAULT: UV_PYTHON_INSTALL_MIRROR_DEFAULT,
   venvPython: venvPython,
   uvInstallHint: uvInstallHint,
   uvCandidates: uvCandidates,

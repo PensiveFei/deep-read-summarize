@@ -102,7 +102,7 @@ deep-read-summarize 是 DSH 插件，可通过 npm、dsh.so 生态或本地安�
 npm install deep-read-summarize
 
 # 或本地安装（dsh profile 目录）
-pnpm add ./deep-read-summarize-0.3.9.tgz
+pnpm add ./deep-read-summarize-0.3.10.tgz
 # 然后在 dsh 配置的 dsh.profile.bundles 追加:
 #   - deep-read-summarize
 # 重启 dsh web 即可（POST /dsh-market/restart）
@@ -178,6 +178,7 @@ parsers: book, paper, video, web
     "whisperModel": "small",  // 视频转写模型档位：small | base | medium
     "language": "zh",         // 视频转写语言：纯英文视频可设 "en"
     "device": "cpu",          // 转写设备：cpu（默认）| auto | cuda；auto/cuda 需自备 CUDA 运行库，失败自动回退 cpu
+    "maxRetries": 0,          // 质量校验重试次数（默认 0 = 不重试，重试会明显变慢）
     "requireCitations": true, // 关键结论是否必须标注出处
     "includeTimestamps": false,
     "outputDir": "./output",    // 笔记输出目录（可指向 Obsidian 仓库）
@@ -209,7 +210,7 @@ parsers: book, paper, video, web
 
 `options.transcribe`：**默认 `true`**（无字幕自动转写）；设为 `false` 则跳过转写（只用字幕/desc 或降级）。
 
-**转写工具链（本机/用户一致）**：脚本**自举**——用 `uv` 建 **Python 3.12** 环境 + **清华镜像**装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并**缓存复用**；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**；**版本已锁定**（Python 3.12 / faster-whisper / uv），保证本机与用户环境一致。脚本是 **Node** 写的，**Windows / macOS / Linux 同一份实现、同一条命令**（`node scripts/transcribe.js --audio <音频> --out <txt>`）；转写默认走 **CPU**（`options.device` 默认 `cpu`），GPU 需自备 CUDA 运行库（cuBLAS/cuDNN），可设 `options.device: "auto"` 尝试，失败会自动回退 CPU。缓存目录按平台取：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`。
+**转写工具链（本机/用户一致）**：脚本**自举**——用 `uv` 建 **Python 3.12** 环境 + **清华镜像**装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并**缓存复用**；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**；**版本已锁定**（Python 3.12 / faster-whisper / uv），保证本机与用户环境一致。脚本是 **Node** 写的，**Windows / macOS / Linux 同一份实现、同一条命令**（`node scripts/transcribe.js --audio <音频> --out <txt>`）；转写默认走 **CPU**（`options.device` 默认 `cpu`），GPU 需自备 CUDA 运行库（cuBLAS/cuDNN），可设 `options.device: "auto"` 尝试，失败会自动回退 CPU。缓存目录按平台取：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`。 装 Python 时默认走镜像加速，**镜像失败会自动改用直连 GitHub 重试**（镜像挂掉不该让用户彻底装不上）；可用环境变量 `DRS_UV_PYTHON_MIRROR` 覆盖（设为空字符串 = 完全不用镜像）。
 
 > ⚠️ **首次转写会先下载模型（small 约 484MB，走 hf-mirror，非 GitHub），可能需要几分钟**，请耐心等待；**本机只下这一次**，之后所有视频转写用缓存、秒开。**只有「无字幕」视频才会触发转写**（有字幕的视频直接用字幕，不触发、不下载）。
 

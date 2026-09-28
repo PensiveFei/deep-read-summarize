@@ -65,7 +65,7 @@ module.exports = {
         "  ① 先取音频：B站用 playurl（curl 'https://api.bilibili.com/x/player/playurl?avid=<aid>&cid=<cid>&fnval=16&fourk=1' 的 dash.audio[0].baseUrl）或 yt-dlp，下载存到 '" + tempDir + "/audio.m4a'；\n" +
           "  ② 定位插件转写脚本（文件名固定 `transcribe.js`）：Windows 用 `Get-ChildItem -Path $env:USERPROFILE/.dsh -Recurse -Filter transcribe.js`；macOS/Linux 用 `find \"$HOME/.dsh\" -name transcribe.js`（也可直接用 glob 搜 *transcribe.js）；\n" +
           "  ③ 运行（**三平台命令行完全一致**，脚本是 Node 写的，与 pwsh / bash 无关）：`node <脚本路径> --audio '" + tempDir + "/audio.m4a' --out '" + tempDir + "/transcript.txt' --device " + device + " --model " + whisperModel + " --language " + language + "`；\n" +
-          "  ④ 转写可能较慢：用 run_in_background: true 启动后，轮询输出文件 '" + tempDir + "/transcript.txt' 是否写出内容（非空且稳定），或日志出现 DONE；设合理超时，超时/失败则降级；\n" +
+          "  ④ 转写可能较慢：用 run_in_background: true 启动后，轮询输出文件 '" + tempDir + "/transcript.txt' 是否写出内容（非空且稳定），或日志出现 DONE；设合理超时，超时/失败则降级；**脚本以非 0 退出也算失败**——包括「转写结果为空」（纯静音 / 纯音乐常见，脚本此时会删掉空文件），务必按降级处理，不要把空文件当成功；\n" +
           "  ⑤ 成功后读取 transcript.txt 作为全文（textSource=transcription）。脚本自举：uv 建 Python 3.12 环境 + 镜像装 faster-whisper + hf-mirror 下模型并缓存；Windows/macOS/Linux 是**同一份实现**。**⚠️ 首次转写会先下载模型（small 约 484MB，hf-mirror，非 GitHub）并较慢——先向用户说明这是正常的一次性下载，勿当成卡死；之后缓存复用、秒开。**\n" +
           "  ⑥ 若 `node` 不在 PATH（macOS 从图形界面启动时常见），先用 `command -v node` 确认；确认不可用就直接降级，不要为了跑转写脚本去安装 Node。"
       );
