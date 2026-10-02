@@ -17,6 +17,8 @@
 
 > 注意：DSH 目前是 developer preview，接口可能变化。本仓库针对特定版本的 workflow 工具语义编写，见下文[兼容性](#兼容性)。
 
+> **平台**：Windows / macOS / Linux 同等支持（0.3.9 起），详见下文[支持平台](#支持平台)。
+
 ---
 
 ## 实际效果
@@ -91,6 +93,24 @@ workflow.js      workflow 脚本本体（meta + script）
 
 dsh.so 收录要求：公开仓库、`dsh-plugin` topic（或 dsh 字段）、README 安装说明、SPDX 许可证（MIT）。
 提交后标记为 **Declared**（自声明兼容）；如果你实际使用并验证兼容，请在官方 Discussions 报告结果，这是唯一升 **Verified** 的途径。
+
+---
+
+## 支持平台
+
+**Windows / macOS / Linux 同等支持**（0.3.9 起）。插件本身只依赖 Node（DSH 自带），各环节需要的额外工具按平台装：
+
+- **书籍 / 论文 PDF** → `pdftotext`（poppler）：macOS `brew install poppler`、Windows `winget install poppler`、Debian/Ubuntu `apt install poppler-utils`
+- **B站字幕 / 音频** → `curl`：Windows 10+ 与 macOS / Linux 都自带，零安装
+- **YouTube 字幕** → `yt-dlp`：macOS `brew install yt-dlp`、Windows `winget install yt-dlp.yt-dlp`、任意平台 `pip install -U yt-dlp`
+- **无字幕转写** → `uv`（脚本自举：建 Python 3.12 环境 + 装 faster-whisper）：macOS `brew install uv`、Windows `winget install astral-sh.uv`，macOS / Linux 也可用官方安装脚本（`curl -LsSf https://astral.sh/uv/install.sh` 交给 `sh`）
+
+其余说明：
+
+- 转写是**唯一**需要额外工具链的环节，三平台共用同一份 Node 脚本、同一条命令：`node scripts/transcribe.js --audio <音频> --out <txt>`。
+- 转写默认走 **CPU**，Apple Silicon / Intel Mac 与 Linux 都不需要 CUDA；GPU 需自备 CUDA 运行库，`options.device: "auto"` 会尝试并在失败时自动回退 CPU。
+- 缓存目录按平台取：macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`、Windows `%LOCALAPPDATA%\deep-read-summarize`。
+- 尚未在**真实 macOS** 上跑过一次完整转写推理（CI 只在 `macos-latest` 上验证平台路径解析，不下载模型）。如果你在 Mac 上跑通或遇到报错，欢迎开 issue 反馈。
 
 ---
 ## 安装（DSH 插件）
@@ -294,7 +314,7 @@ npm publish 会自动先跑 prepublishOnly（测试 + lint + 安全检查），�
 
 ## 兼容性
 
-**已验证的宿主：DSH 0.1.2-rc.1**（Node 24）。本仓库的依赖面只有两处：
+**已验证的宿主：DSH 0.2.0-rc.2**（Node 24）。本仓库的依赖面只有两处：
 
 | 依赖面 | 现行契约 | 本仓库的用法 |
 | --- | --- | --- |

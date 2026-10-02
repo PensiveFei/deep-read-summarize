@@ -17,6 +17,8 @@ Content is split into chunks, read in parallel by multiple sub-agents, then merg
 
 > Note: DSH is currently a developer preview and its interfaces may change. This repo targets a specific version of the workflow-tool semantics — see [Compatibility](#compatibility).
 
+> **Platforms**: Windows / macOS / Linux are equally supported (since 0.3.9) — see [Platform support](#platform-support) below.
+
 ---
 
 ## What it looks like
@@ -91,6 +93,24 @@ This repo carries the `dsh-plugin` topic and the `dsh` field in `package.json`, 
 
 dsh.so listing requirements: a public repo, the `dsh-plugin` topic (or the dsh field), README install instructions, and an SPDX license (MIT).
 After submission it is marked **Declared** (self-declared compatibility); if you actually use it and verify compatibility, report your results in the official Discussions — that is the only way to be promoted to **Verified**.
+
+---
+
+## Platform support
+
+**Windows / macOS / Linux are equally supported** (since 0.3.9). The plugin itself only needs Node (which DSH ships); the extra tools each input type may use are installed per platform:
+
+- **Book / paper PDF** → `pdftotext` (poppler): macOS `brew install poppler`, Windows `winget install poppler`, Debian/Ubuntu `apt install poppler-utils`
+- **Bilibili subtitles / audio** → `curl`: already present on Windows 10+, macOS and Linux — nothing to install
+- **YouTube subtitles** → `yt-dlp`: macOS `brew install yt-dlp`, Windows `winget install yt-dlp.yt-dlp`, any platform `pip install -U yt-dlp`
+- **Transcription when there are no subtitles** → `uv` (the script bootstraps a Python 3.12 env and installs faster-whisper): macOS `brew install uv`, Windows `winget install astral-sh.uv`, or the official installer script on macOS / Linux (hand `curl -LsSf https://astral.sh/uv/install.sh` to `sh`)
+
+Further notes:
+
+- Transcription is the **only** part that needs an extra toolchain, and all three platforms share one Node script and one command: `node scripts/transcribe.js --audio <file> --out <txt>`.
+- Transcription runs on **CPU** by default, so Apple Silicon / Intel Macs and Linux need no CUDA; GPU support needs a CUDA runtime and `options.device: "auto"` will try it and fall back to CPU on failure.
+- Cache location per platform: macOS `~/Library/Caches/deep-read-summarize`, Linux `$XDG_CACHE_HOME/deep-read-summarize`, Windows `%LOCALAPPDATA%\deep-read-summarize`.
+- A full transcription has **not yet been run on real macOS hardware** (CI only verifies platform path resolution on `macos-latest`; it does not download the model). If it works for you on a Mac — or fails — please open an issue.
 
 ---
 ## Installation (DSH plugin)
@@ -294,7 +314,7 @@ See CHANGELOG.md for changes and CONTRIBUTING.md for contribution guidelines.
 
 ## Compatibility
 
-**Verified host: DSH 0.1.2-rc.1** (Node 24). The dependency surface is exactly two things:
+**Verified host: DSH 0.2.0-rc.2** (Node 24). The dependency surface is exactly two things:
 
 | Surface | Current contract | How this repo uses it |
 | --- | --- | --- |

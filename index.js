@@ -1,7 +1,7 @@
 // ============================================================================
 // deep-read-summarize — DSH plugin entry
 // ============================================================================
-// 标准 Cordis 插件（DSH 0.1.x 契约，已在 0.1.2-rc.1 实测）：导出 name + inject + apply(ctx, config)。
+// 标准 Cordis 插件（DSH 0.1.x / 0.2.x 契约，已在 0.2.0-rc.2 实测）：导出 name + inject + apply(ctx, config)。
 // apply() 将插件自带的 SKILL.md 注册为运行时技能，并把 workflow 的
 // meta + 自包含 script + args 示例嵌入技能内容，使模型可直接用 workflow
 // 工具执行精读流程。
