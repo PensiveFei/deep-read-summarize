@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.11] — 2026-10-05
+
+文档与 CI 补强：**运行时行为与 0.3.10 完全一致**，没有任何解析器 / 脚本 / schema 改动。
+
+### Added
+
+- **`README.md` / `README.en.md` 新增「支持平台」（Platform support）一节**：逐环节列出三平台各自需要的工具（poppler / curl / yt-dlp / uv）、转写默认走 CPU（Apple Silicon 与 Intel Mac 都不需要 CUDA）、三平台缓存目录，并如实写明**尚未在真实 macOS 上跑过一次完整转写推理**（CI 只覆盖到平台路径解析）。
+
+### Changed
+
+- **CI 的 `cross-platform` 作业从「lint + `--self-check`」扩到与 ubuntu 作业同一套门禁**（security / lint / fixture / node:test / validate）。此前 42 项测试套件从未在 macOS 或 Windows 上执行过，而文档一直写着「三平台同等支持」——现在三平台各跑一遍。
+- **「已验证的宿主」锚点从 DSH `0.1.2-rc.1` 更新为 `0.2.0-rc.2`**（`README.md` / `README.en.md` / `index.js` 头部注释），依据是 2026-09-30 在 0.2.0-rc.2 上的契约复核。
+
+### Compatibility
+
+- 无破坏性变更：依赖、`exports`、`files` 与全部运行时行为均与 0.3.10 相同。
+- 从 npm 安装的用户：包内 `README` 会更新（本次唯一的用户可见变化）；`.github/` 不进包，CI 改动只影响仓库。
+
 ## [0.3.10] — 2026-09-24
 
 对**已发布的 0.3.9** 做的一轮审计修复。审计对象是 **npm 上那份字节**（不是工作区）：先确认 29 个文件与 tag `v0.3.9` **逐字节一致**，再在解包目录里跑该包自带的门禁（lint / security / 35 fixture / 38 node:test 全绿），然后逐项找问题。
