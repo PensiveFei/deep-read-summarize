@@ -1,4 +1,4 @@
-// tests/index.test.js — node:test 风格测试（dsh.so / npm 规范）
+// tests/index.test.js — node:test 风格测试（npm 规范）
 // 运行: node --test
 const { test } = require('node:test');
 const assert = require('node:assert');

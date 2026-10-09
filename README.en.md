@@ -87,15 +87,6 @@ To change how an input type is handled, drop a parser with the same interface in
 
 ---
 
-## dsh.so ecosystem
-
-This repo carries the `dsh-plugin` topic and the `dsh` field in `package.json`, so it can be indexed by the dsh.so registry.
-
-dsh.so listing requirements: a public repo, the `dsh-plugin` topic (or the dsh field), README install instructions, and an SPDX license (MIT).
-After submission it is marked **Declared** (self-declared compatibility); if you actually use it and verify compatibility, report your results in the official Discussions — that is the only way to be promoted to **Verified**.
-
----
-
 ## Platform support
 
 **Windows / macOS / Linux are equally supported** (since 0.3.9). The plugin itself only needs Node (which DSH ships); the extra tools each input type may use are installed per platform:
@@ -115,7 +106,7 @@ Further notes:
 ---
 ## Installation (DSH plugin)
 
-deep-read-summarize is a DSH plugin installable via npm, the dsh.so ecosystem, or locally:
+deep-read-summarize is a DSH plugin installable via npm or locally:
 
 ```bash
 # npm install (published to the registry, no third-party dependencies)
