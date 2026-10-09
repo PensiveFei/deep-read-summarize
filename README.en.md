@@ -9,7 +9,7 @@
 
 > **⚠️ Most importantly: this is an "assisted deep-reading" tool, not a substitute for your own learning.** It helps you quickly extract, summarize, and structure what you read, but **real understanding, thinking, and critique must still come from you**. Always treat the original source as authoritative — do not mistake the generated notes for the learning itself.
 
-A deep-reading workflow for DSH (DeepSeek Harness): feed it a book, a paper, a video link, or a web page, and it produces a structured Obsidian note.
+A deep-reading workflow for DSH (DeepSeek Harness): feed it a book, a paper, a video link, or a web page, and it produces a structured Markdown note (YAML frontmatter — ready for Obsidian, Logseq, static-site content folders, or any Markdown editor).
 
 Content is split into chunks, read in parallel by multiple sub-agents, then merged into a Markdown file with YAML frontmatter. Key conclusions carry citations to the original source, and a quality check runs before the final draft.
 
@@ -43,7 +43,7 @@ Content is split into chunks, read in parallel by multiple sub-agents, then merg
 - Chunk count — and therefore sub-agent count — is enforced by `maxChunks` (a runaway plan blows the per-call time limit)
 - Key citations must carry page/chapter/paragraph references to reduce fabrication
 - Configuration errors abort immediately; a chunk that fails to parse is skipped and marked as a gap
-- Output drops straight into Obsidian and works with Dataview
+- Output is **standard Markdown + YAML frontmatter**: the body is plain CommonMark (no wikilinks, no callouts), so Obsidian (with Dataview), Logseq, Jekyll / Hugo / Astro content folders and any Markdown editor can consume it directly
 
 ---
 
@@ -65,7 +65,7 @@ Wave 2  N sub-agents deep-read chunks in parallel (Map)
 Wave 3  Merge draft + quality check (Reduce)
   │
   ▼
-Obsidian note
+Markdown note
 ```
 
 Three waves, roughly N+2 sub-agents in total, where N is the number of chunks.
@@ -201,7 +201,7 @@ Pass this JSON to DSH's workflow tool:
     "maxRetries": 0,          // quality-check retries (default 0 = no retry; retrying is noticeably slower)
     "requireCitations": true, // whether key conclusions must carry citations
     "includeTimestamps": false,
-    "outputDir": "./output",    // note output directory (can point at your Obsidian vault)
+    "outputDir": "./output",    // note output directory (can point at your Obsidian vault or a static-site content folder)
     "tempDir": "./.tmp"        // temp file directory
   }
 }
@@ -216,7 +216,7 @@ Examples:
 | Video | `https://youtube.com/watch?v=xxx` |
 | Web page | `https://example.com/article` |
 
-Notes are written to `options.outputDir` (default `./output`, can point at your Obsidian vault), with the filename taken from the content title.
+Notes are written to `options.outputDir` (default `./output`, can point at your Obsidian vault or a static-site content folder), with the filename taken from the content title.
 
 ### Video: full transcript (subtitles first, auto-transcription when none)
 

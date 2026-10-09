@@ -1,7 +1,7 @@
 {
   "name": "deep-read-summarize",
   "version": "0.3.11",
-  "description": "Deep reading & summarization for DSH: books/papers/videos/web → structured Obsidian notes. Plugin parsers, MapReduce deep-read, JSON Schema-constrained sub-tasks.",
+  "description": "Deep reading & summarization for DSH: books/papers/videos/web → structured Markdown notes (Obsidian / Logseq / static sites). Plugin parsers, MapReduce deep-read, JSON Schema-constrained sub-tasks.",
   "type": "commonjs",
   "main": "index.js",
   "exports": {
@@ -52,6 +52,7 @@
     "summarization",
     "deep-read",
     "obsidian",
+    "markdown",
     "llm",
     "subagent",
     "mapreduce",

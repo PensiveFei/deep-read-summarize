@@ -9,7 +9,7 @@
 
 > **⚠️ 最重要：本工具是「辅助精读」工具，不能代替自主学习。** 它帮你快速提取、归纳、结构化阅读内容，但**真正的理解、思考与批判仍需你自己完成**；请始终以原文为准，不要把它当作学习成果本身。
 
-给 DSH（DeepSeek Harness）写的一个精读工作流：输入一本书、一篇论文、一个视频链接或网页，输出一份结构化的 Obsidian 笔记。
+给 DSH（DeepSeek Harness）写的一个精读工作流：输入一本书、一篇论文、一个视频链接或网页，输出一份结构化的标准 Markdown 笔记（YAML frontmatter，可直接放进 Obsidian / Logseq / 静态站点内容目录 / 任意 Markdown 编辑器）。
 
 内容会被拆成若干块，由多个子代理并行精读，再合并成一篇带 YAML frontmatter 的 Markdown。关键结论附原文出处，成稿前有一道质量校验。
 
@@ -43,7 +43,7 @@
 - 分块计划与子代理数量受 `maxChunks` 强制约束（计划失控会顶穿单次调用时限）
 - 关键引用必须标注页码/章节/段落，降低编造风险
 - 配置错误直接报错终止；某块内容解析失败则跳过并标记缺口
-- 输出可直接放进 Obsidian，配合 Dataview 使用
+- 输出**标准 Markdown + YAML frontmatter**：正文是通用 CommonMark（无双链、无 callout），Obsidian（配合 Dataview）、Logseq、Jekyll / Hugo / Astro 的内容目录、任意 Markdown 编辑器都能直接用
 
 ---
 
@@ -65,7 +65,7 @@
 波次3  合并成稿 + 质量校验（Reduce）
   │
   ▼
-Obsidian 笔记
+Markdown 笔记
 ```
 
 三个波次，子代理总数约 N+2 个，N 是分块数。
@@ -201,7 +201,7 @@ parsers: book, paper, video, web
     "maxRetries": 0,          // 质量校验重试次数（默认 0 = 不重试，重试会明显变慢）
     "requireCitations": true, // 关键结论是否必须标注出处
     "includeTimestamps": false,
-    "outputDir": "./output",    // 笔记输出目录（可指向 Obsidian 仓库）
+    "outputDir": "./output",    // 笔记输出目录（可指向 Obsidian 仓库或静态站点内容目录）
     "tempDir": "./.tmp"        // 临时文件目录
   }
 }
@@ -216,7 +216,7 @@ parsers: book, paper, video, web
 | 视频 | `https://youtube.com/watch?v=xxx` |
 | 网页 | `https://example.com/article` |
 
-笔记写到 `options.outputDir` 指定的目录（默认 `./output`，可指向你的 Obsidian 仓库），文件名取自内容标题。
+笔记写到 `options.outputDir` 指定的目录（默认 `./output`，可指向你的 Obsidian 仓库或静态站点内容目录），文件名取自内容标题。
 
 ### 视频：完整逐字稿（字幕优先，无字幕自动转写）
 

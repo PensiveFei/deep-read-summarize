@@ -9,7 +9,7 @@
 const meta = {
   "name": "deep-read-summarize",
   "description": "Deep reading & summarization of books/papers/videos/web (v3.0)",
-  "whenToUse": "User provides a book, paper, video link or web page and wants a deep-read summary saved to Obsidian",
+  "whenToUse": "User provides a book, paper, video link or web page and wants a deep-read summary saved as a Markdown note",
   "phases": [
     {
       "title": "解析器选择",

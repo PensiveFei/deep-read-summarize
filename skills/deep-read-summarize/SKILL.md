@@ -1,12 +1,14 @@
 ---
 name: deep-read-summarize
-description: 深度精读并总结书籍/学术论文/视频/网页，输出带 YAML frontmatter 的 Obsidian 笔记（2500+ 字，含术语表/批判分析/行动要点/延伸阅读）
-whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTube/B站）或网页，要求深度精读、提取要点、生成可存入 Obsidian 的精读笔记时
+description: 深度精读并总结书籍/学术论文/视频/网页，输出带 YAML frontmatter 的标准 Markdown 笔记（2500+ 字，含术语表/批判分析/行动要点/延伸阅读；可直接放进 Obsidian / Logseq / 静态站点内容目录）
+whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTube/B站）或网页，要求深度精读、提取要点、生成可保存的 Markdown 精读笔记时（Obsidian / Logseq 仓库、静态站点内容目录、任意 Markdown 编辑器均可）
 ---
 
 # deep-read-summarize — 深度精读与总结
 
-把一本书、一篇论文、一个视频或网页，精读成一篇结构化的 Obsidian 笔记。
+把一本书、一篇论文、一个视频或网页，精读成一篇结构化的标准 Markdown 笔记。
+
+正文是通用 CommonMark（**无双链、无 callout、无编辑器专属语法**），所以 Obsidian（配合 Dataview）、Logseq、Jekyll / Hugo / Astro 的内容目录，以及任意 Markdown 编辑器都能直接使用。
 
 ## 能力
 
@@ -16,7 +18,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 - 分块计划与子代理数量受 `maxChunks` 强制约束（计划失控会顶穿单次调用时限）
 - 关键引用标注页码/章节/段落，降低编造风险
 - 配置错误终止（FATAL）；内容解析失败降级标记缺口继续
-- 输出带 YAML frontmatter（type 字段可配 Dataview）
+- 输出**标准 Markdown + YAML frontmatter**：正文为通用 CommonMark，frontmatter 的 `type` 字段可配 Dataview 查询
 
 ## 输入
 
@@ -39,7 +41,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 
 workflow 返回 `{ ok, filePath, note, qualityPassed, qualityIssues, failedChunks, textSource }`。
 
-> ⚠️ **`note` 就是完整笔记正文，`filePath` 只是建议路径**：脚本运行在无文件系统的沙箱里（DSH 的 workflow 契约：脚本只负责协调子代理），**它不会替你写文件**。必须由你（主代理）在拿到结果后用 `write` 工具把它写到 `filePath`——默认 `./output/`，可用 `options.outputDir` 指向 Obsidian 仓库。
+> ⚠️ **`note` 就是完整笔记正文，`filePath` 只是建议路径**：脚本运行在无文件系统的沙箱里（DSH 的 workflow 契约：脚本只负责协调子代理），**它不会替你写文件**。必须由你（主代理）在拿到结果后用 `write` 工具把它写到 `filePath`——默认 `./output/`，可用 `options.outputDir` 指向 Obsidian 仓库或静态站点的内容目录。
 
 ```markdown
 ---

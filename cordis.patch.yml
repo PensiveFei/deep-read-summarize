@@ -4,7 +4,7 @@
 #
 # This plugin is a workflow + skill provider: it registers the deep-read-summarize
 # workflow (meta/script) and the filesystem skill, so users can deep-read books,
-# papers, videos and web pages into structured Obsidian notes.
+# papers, videos and web pages into structured Markdown notes.
 
 - insert:
     - id: deep-read-summarize
