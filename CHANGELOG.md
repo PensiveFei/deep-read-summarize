@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.12] — 2026-10-05
+
+本轮**没有运行时改动**：生成的笔记与 0.3.11 一致（工作流脚本 `RAW_SCRIPT` 逐位未变，改动前后比对解码脚本哈希相同）。改的是文档定位，以及一处**已验证事实**的同步。
+
+### Changed
+
+- **定位改为「输出标准 Markdown」，不再自我限定为 Obsidian 工具**：正文本来就是通用 CommonMark（无 `[[双链]]`、无 callout、无 Dataview 内联字段），frontmatter 也是标准 YAML。现在 README ×2 / `SKILL.md` / `package.json` description 都如实这么说；技能目录的 `description`、`whenToUse` 与 `workflow.meta.whenToUse` 一并放开，让「要一份 Markdown 笔记」这类请求也能命中本技能。
+  - `package.json` keywords 新增 `markdown`，保留 `obsidian` 作为检索入口。
+- **README 删除「dsh.so 生态」一节**（中英各一处）及安装段里指向它的引用。**只影响文档**：仓库的 `dsh-plugin` topic 与 `package.json` 的 `dsh` 字段都保留——后者承载 `bundle.patch`，是插件加载所必需，不能删。
+- **「尚未在真实 macOS 上验证」改为「已验证」**：README ×2 的「支持平台」一节现在陈述**已在真实 macOS 上跑通一次完整的无字幕转写**（`uv` 自举 Python 3.12 → 装 faster-whisper → 下载模型 → 输出逐字稿，退出码 0）。这条声明此前一直如实写着「尚未验证」，只有拿到真机结果才改。
+
+### Compatibility
+
+- 无破坏性变更。**生成的笔记与 0.3.11 完全一致**：本轮仅动文档与元数据。
+- frontmatter 仍是既有的 9 个键，未做增删。**已知的跨工具语义冲突依旧存在**：`aliases` 在 Hugo 中是 URL 重定向、`type` 在 Hugo 中是 layout 选择。按目标工具切换 frontmatter（如 `options.frontmatter: obsidian / generic / minimal`）属于后续工作，本轮未做。
+
+### Verification boundary
+
+- 本次真机验证覆盖：完整转写链路（自举 Python 3.12 → 装 faster-whisper → 下载模型 → CPU 推理出逐字稿）。
+- 仍未端到端跑通：`uv` 的 CPython 镜像失效后「自动改直连 GitHub」的回退链路（单测覆盖了尝试序列，但本机已有 Python 3.12，无法强制一次真实下载来贯通）。
+
 ## [0.3.11] — 2026-10-05
 
 文档与 CI 补强：**运行时行为与 0.3.10 完全一致**，没有任何解析器 / 脚本 / schema 改动。

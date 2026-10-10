@@ -101,7 +101,7 @@ Further notes:
 - Transcription is the **only** part that needs an extra toolchain, and all three platforms share one Node script and one command: `node scripts/transcribe.js --audio <file> --out <txt>`.
 - Transcription runs on **CPU** by default, so Apple Silicon / Intel Macs and Linux need no CUDA; GPU support needs a CUDA runtime and `options.device: "auto"` will try it and fall back to CPU on failure.
 - Cache location per platform: macOS `~/Library/Caches/deep-read-summarize`, Linux `$XDG_CACHE_HOME/deep-read-summarize`, Windows `%LOCALAPPDATA%\deep-read-summarize`.
-- A full transcription has **not yet been run on real macOS hardware** (CI only verifies platform path resolution on `macos-latest`; it does not download the model). If it works for you on a Mac — or fails — please open an issue.
+- A **full transcription has been run successfully on real macOS hardware** (since 0.3.12): `uv` bootstraps Python 3.12, installs faster-whisper, downloads the model and writes the transcript — exit code 0. CI's `macos-latest` job separately covers platform path resolution and the whole test suite. If you hit an error on a Mac, please open an issue.
 
 ---
 ## Installation (DSH plugin)

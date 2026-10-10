@@ -101,7 +101,7 @@ workflow.js      workflow 脚本本体（meta + script）
 - 转写是**唯一**需要额外工具链的环节，三平台共用同一份 Node 脚本、同一条命令：`node scripts/transcribe.js --audio <音频> --out <txt>`。
 - 转写默认走 **CPU**，Apple Silicon / Intel Mac 与 Linux 都不需要 CUDA；GPU 需自备 CUDA 运行库，`options.device: "auto"` 会尝试并在失败时自动回退 CPU。
 - 缓存目录按平台取：macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`、Windows `%LOCALAPPDATA%\deep-read-summarize`。
-- 尚未在**真实 macOS** 上跑过一次完整转写推理（CI 只在 `macos-latest` 上验证平台路径解析，不下载模型）。如果你在 Mac 上跑通或遇到报错，欢迎开 issue 反馈。
+- 已在**真实 macOS** 上跑通一次完整的无字幕转写（0.3.12 起）：`uv` 自举 Python 3.12 → 装 faster-whisper → 下载模型 → 输出逐字稿，退出码 0；CI 的 `macos-latest` 作业另外覆盖平台路径解析与整套测试。遇到报错欢迎开 issue 反馈。
 
 ---
 ## 安装（DSH 插件）
