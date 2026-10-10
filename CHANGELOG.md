@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.3.12] — 2026-10-05
+## [0.3.12] — 2026-10-10
 
 本轮**没有运行时改动**：生成的笔记与 0.3.11 一致（工作流脚本 `RAW_SCRIPT` 逐位未变，改动前后比对解码脚本哈希相同）。改的是文档定位，以及一处**已验证事实**的同步。
 
