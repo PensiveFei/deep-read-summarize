@@ -63,7 +63,8 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18",
+    "dsh": ">=0.1.0-rc.6"
   },
   "repository": {
     "type": "git",
