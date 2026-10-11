@@ -113,7 +113,8 @@ npm view deep-read-summarize --prefer-online                         # 验证线
 | v0.3.9 | npm 已发布 | macOS / Linux 支持（转写链路跨平台） |
 | v0.3.10 | npm 已发布 | 修：失效的 uv 镜像、空转写被当成成功、发布文档过时 |
 | v0.3.11 | npm 已发布 | 文档：README 补「支持平台」；CI：三平台跑全套门禁 |
-| **v0.3.12** | **npm 已发布（当前）** | 文档：定位改为「标准 Markdown」；删 dsh.so 一节；macOS 真机验证转写通过 |
+| v0.3.12 | npm 已发布 | 文档：定位改为「标准 Markdown」；删 dsh.so 一节；macOS 真机验证转写通过 |
+| **v0.3.13** | **npm 已发布（当前）** | 声明：补 `engines.dsh`（此前的 `dsh.minVersion` 非公开字段，市场不读，判定一直是 `undeclared`） |
 | v1.0.0 | 计划 | API 稳定后发布 |
 
 > 早期迭代用 0.x 表达不稳定；API 稳定后再发 1.0.0。
