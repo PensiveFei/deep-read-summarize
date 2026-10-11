@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.13] — 2026-10-11
+
+**元数据版本，无运行时改动**：生成的笔记与 0.3.12 一致，工作流脚本未动。本版只修一处**声明**问题。
+
+### Fixed
+
+- **宿主要求此前是「未声明」状态**：`dsh.minVersion: "0.1.0"` 是自定义字段，不属 DSH 公开字段集，**市场不读**。按官方 *Public package manifest fields*，运行时要写在顶层 `engines` 的 `dsh` 键上。此前市场对这个包的判定是 `basis: undeclared`，卡片上连"要求"一栏都没有。现补上 `engines.dsh`。
+
+  本包**没有**任何 `@deepseek-ai/*` 依赖（纯 workflow / skill 插件，源码零导入），所以 peer 这条路走不通——官方文档「Use peer dependencies as the sole host requirement」被否决的理由正是此情形：peer 约束的是安装的 npm 包，**无法识别独立 profile 工程里正在运行的那个 DSH 进程**。对纯 workflow 插件，`engines.dsh` 是唯一的声明通道。
+
+  取值为 `>=0.1.0-rc.6`（**不是** `>=0.1.0`）：semver 只在范围里存在与目标版本 `major.minor.patch` 元组完全一致、且自身带预发布标签的比较符时才放行预发布版，所以 `>=0.1.0` 匹配不到 `0.1.0-rc.6`，会把本插件在 `0.1.0-rc.6` 宿主上标成**不兼容**。刻意**只写下界**：engine 声明走严格路径（没有 peer 那套隐式上界宽容），写上界会让未来的 `0.3.x` 宿主被误判为不兼容。
+
+### Compatibility
+
+- 无破坏性变更；`engines.node` 未动。
+- 实测判定（`0.1.0-rc.6` / `0.1.2-rc.1` / `0.2.0-rc.2` / `0.2.1-alpha.2` / `0.3.0`）：全部 `compatible`，`basis` 由 `undeclared` 变为 `manifest`。
+
 ## [0.3.12] — 2026-10-10
 
 本轮**没有运行时改动**：生成的笔记与 0.3.11 一致（工作流脚本 `RAW_SCRIPT` 逐位未变，改动前后比对解码脚本哈希相同）。改的是文档定位，以及一处**已验证事实**的同步。
