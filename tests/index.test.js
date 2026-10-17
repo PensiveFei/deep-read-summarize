@@ -454,3 +454,65 @@ test('docs: RELEASE.md lists the version we are about to ship', () => {
   assert.ok(rel.indexOf('v' + ver) >= 0,
     'docs/RELEASE.md 的「当前版本速览」必须包含当前版本 v' + ver + '（每次发版都要更新，别再让它停在旧版本）');
 });
+
+// ============================================================================
+// 0.3.14 回归：路径拼接、本地日期、config 白名单
+// ============================================================================
+
+test('workflow: trailing separators in outputDir normalize to a single separator', async () => {
+  const BS = String.fromCharCode(92);
+  const cases = [
+    { dir: 'out/', expect: 'out/Sample.md' },
+    { dir: 'out//', expect: 'out/Sample.md' },
+    { dir: 'out' + BS, expect: 'out/Sample.md' },
+    { dir: 'out' + BS + BS, expect: 'out/Sample.md' },
+    { dir: './output/', expect: './output/Sample.md' }
+  ];
+  for (const c of cases) {
+    const r = await runScript({ input: 'x', type: 'paper', options: { outputDir: c.dir } }, makeAgent({}));
+    assert.strictEqual(r.result.filePath, c.expect,
+      'outputDir ' + JSON.stringify(c.dir) + ' must normalize to ' + c.expect + ', got ' + r.result.filePath);
+  }
+});
+
+test('workflow: trailing separators in tempDir normalize into tempFile', async () => {
+  const BS = String.fromCharCode(92);
+  const cases = ['./.tmp/', './.tmp//', './.tmp' + BS, './.tmp' + BS + BS];
+  for (const dir of cases) {
+    const r = await runScript({ input: 'x', type: 'paper', options: { tempDir: dir } }, makeAgent({}));
+    const fetchCall = r.calls.find(function (c) { return c.label === '获取+分块'; });
+    assert.ok(fetchCall, 'the fetch phase must run');
+    assert.ok(fetchCall.prompt.indexOf('./.tmp/input.txt') >= 0,
+      'tempDir ' + JSON.stringify(dir) + ' must normalize to ./.tmp/input.txt');
+  }
+});
+
+test('workflow: created comes from the local date, not the UTC slice', async () => {
+  assert.ok(!/toISOString\(\)\s*\.\s*slice\(0,\s*10\)/.test(wf.script),
+    'the note date must not be sliced out of the UTC ISO string');
+  const r = await runScript({ input: 'x', type: 'paper', options: {} }, makeAgent({}));
+  const draft = r.calls.find(function (c) { return c.label === '汇总成稿'; }).prompt;
+  const m = draft.match(/created: (\d{4}-\d{2}-\d{2})/);
+  assert.ok(m, 'created: <date> must appear in the draft prompt');
+  const d = new Date();
+  const pad = function (n) { return ('0' + n).slice(-2); };
+  const local = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  assert.strictEqual(m[1], local, 'created must be the local date (UTC+8 evenings differ from UTC)');
+});
+
+test('plugin config: transcription keys are configurable and unknown keys warn', () => {
+  const opts = plugin.normalizeOptions({ whisperModel: 'medium', language: 'en', device: 'cpu', maxRetries: 2 });
+  assert.strictEqual(opts.whisperModel, 'medium', 'whisperModel must be settable per profile');
+  assert.strictEqual(opts.language, 'en', 'language must be settable per profile');
+  assert.strictEqual(opts.device, 'cpu');
+  assert.strictEqual(opts.maxRetries, 2, 'maxRetries must be settable per profile');
+
+  const seen = [];
+  const origWarn = console.warn;
+  console.warn = function (msg) { seen.push(String(msg)); };
+  try { plugin.normalizeOptions({ notAKey: 1 }); } finally { console.warn = origWarn; }
+  assert.ok(seen.some(function (m) { return m.indexOf('notAKey') >= 0; }),
+    'an unknown config key must be reported, not silently dropped');
+  assert.ok(seen.some(function (m) { return m.indexOf('whisperModel') >= 0; }),
+    'the warning should list the keys that are actually accepted');
+});
