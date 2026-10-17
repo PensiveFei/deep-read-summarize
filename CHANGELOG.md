@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.14] — 2026-10-17
+
+修四个实际缺陷，都属于「声明 / 约定与实际行为不一致」这一类。其中两处**用户可感知**，见「升级提醒」。
+
+### Fixed
+
+- **`outputDir` / `tempDir` 的尾部分隔符处理不对称**：`tempFile` 只去掉尾部正斜杠，`mdPath` 只去掉一个反斜杠。于是 `outputDir: 'out/'` 会拼出 `out//Title.md`，`tempDir: '.tmp\'` 会拼出 `.tmp\/input.txt` —— **在 POSIX 上那个反斜杠会变成目录名的一部分**，抓取代理会去建一个实际不存在的目录。现在两者统一为「去掉任意长度的 `/` 或 `\`，再补一个分隔符」，与 `parsers/_prompt.js` 自己那套回退逻辑一致。
+- **frontmatter 的 `created` 用的是 UTC 日期**：`new Date().toISOString().slice(0, 10)` 在 UTC+8 的 00:00–08:00 会写成前一天。改为取本地年月日。
+  - 两处改动都在 `workflow.js` 的 `RAW_SCRIPT` 里。该文件按既有教训**整体重建**（解码模板 → 精确替换 → 重新 JSON 编码 → 只替换那一条物理行），并断言成品脚本「只差这三处」、模板反向还原逐字一致、内联标记未被破坏。
+- **插件级 config 会静默丢弃未知键**：`normalizeOptions` 只遍历 `DEFAULT_OPTIONS`，所以写进 `cordis.patch.yml` 的 `whisperModel` / `language` / `device` / `maxRetries` **既不生效也不告警**，拼错的键同样无声。现在这四个键进了白名单，未知键会告警并列出可用键。
+- **README ×2 的 fixture 测试数停在 25**：实际为 35（两个文件各两处）。
+
+### Added
+
+- 4 条回归测试（`node:test` 42 → 46）：`outputDir` 尾分隔符归一、`tempDir` 尾分隔符归一、`created` 用本地日期（含「不得再用 UTC 切片」的源码断言）、config 白名单与未知键告警。
+  - 这几条做过**反证**：把旧版脚本取回来跑同一套断言，`out/`、`out\\`、`./.tmp\`、`./.tmp\\` 四个用例都会失败 —— 证明它们不是空跑。
+
+### Compatibility
+
+- 无破坏性变更；依赖、`exports`、`files`、`engines` 均未动。frontmatter 仍是既有 9 个键。
+
+### 升级提醒
+
+- **`created` 的日期可能比之前大一天**：这正是修复目的（本地日期而非 UTC）。UTC 偏移为负的用户在晚间会看到相反方向的一天差异。
+- **带尾分隔符时产物路径字符串变干净了**：此前会产生 `out//Title.md` 这类路径。笔记实际落盘位置不变（多数文件系统把 `//` 当单斜杠），但依赖 `filePath` 字符串做幂等判断的调用方会看到不同的写法。
+
 ## [0.3.13] — 2026-10-11
 
 **元数据版本，无运行时改动**：生成的笔记与 0.3.12 一致，工作流脚本未动。本版只修一处**声明**问题。
