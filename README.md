@@ -142,7 +142,7 @@ npm install        # 无第三方依赖，仅初始化
 ### 2. 验证环境（离线，不需要任何 API key）
 
 ```bash
-npm test           # 25 项 fixture 测试，全部离线跑通
+npm test           # 35 项 fixture 测试，全部离线跑通
 ```
 
 看到 `TOTAL: 25 passed, 0 failed` 即环境就绪。
@@ -293,7 +293,7 @@ parsers: book, paper, video, web
 ```bash
 npm install
 npm run lint       # node --check 全部 JS
-npm test           # fixture 测试（25 项，全部离线）
+npm test           # fixture 测试（35 项，全部离线）
 npm run validate   # 发布前验证（含安全检查）
 ```
 

@@ -142,7 +142,7 @@ npm install        # no third-party dependencies, just initialization
 ### 2. Verify the environment (offline, no API key needed)
 
 ```bash
-npm test           # 25 fixture tests, all run offline
+npm test           # 35 fixture tests, all run offline
 ```
 
 Seeing `TOTAL: 25 passed, 0 failed` means the environment is ready.
@@ -293,7 +293,7 @@ A paper, 6 chunks, full mode: roughly 15–25k tokens. `fastMode` with a lower `
 ```bash
 npm install
 npm run lint       # node --check on all JS
-npm test           # fixture tests (25, all offline)
+npm test           # fixture tests (35, all offline)
 npm run validate   # pre-release validation (including security checks)
 ```
 
