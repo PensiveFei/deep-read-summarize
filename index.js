@@ -33,7 +33,11 @@ const DEFAULT_OPTIONS = {
   requireCitations: true,
   includeTimestamps: false,
   outputDir: './output',
-  tempDir: './.tmp'
+  tempDir: './.tmp',
+  whisperModel: 'small',
+  language: 'zh',
+  device: 'cpu',
+  maxRetries: 0
 };
 
 const OPTION_TYPES = {
@@ -44,7 +48,11 @@ const OPTION_TYPES = {
   requireCitations: 'boolean',
   includeTimestamps: 'boolean',
   outputDir: 'string',
-  tempDir: 'string'
+  tempDir: 'string',
+  whisperModel: 'string',
+  language: 'string',
+  device: 'string',
+  maxRetries: 'number'
 };
 
 /**
@@ -63,6 +71,14 @@ function normalizeOptions(config) {
       continue;
     }
     opts[key] = v;
+  }
+  // 未知键此前是完全无声的：循环只遍历白名单，写错的键名既不生效也不告警。
+  var unknown = Object.keys(raw).filter(function (k) {
+    return !Object.prototype.hasOwnProperty.call(DEFAULT_OPTIONS, k);
+  });
+  if (unknown.length) {
+    console.warn('[deep-read-summarize] ignoring unknown config key(s): ' + unknown.join(', '));
+    console.warn('[deep-read-summarize] allowed keys: ' + Object.keys(DEFAULT_OPTIONS).join(', '));
   }
   return opts;
 }

@@ -22,6 +22,10 @@
 #     transcribe: true           # video: auto-transcribe when no subtitles (default: true)
 #     requireCitations: true     # key conclusions must cite source location (default: true)
 #     includeTimestamps: false   # video timestamps (default: false)
+#     whisperModel: 'small'      # transcription model (default: small)
+#     language: 'zh'             # transcription language (default: zh)
+#     device: 'cpu'              # cpu | auto | cuda; GPU needs a CUDA runtime (default: cpu)
+#     maxRetries: 0              # quality-check retry rounds (default: 0)
 #
 # Idempotency is deliberately NOT a plugin config key: the workflow script runs
 # without a filesystem, so it cannot write a fingerprint record. Programmatic
