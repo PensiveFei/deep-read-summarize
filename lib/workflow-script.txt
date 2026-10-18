@@ -1,0 +1,215 @@
+// ========== deep-read-summarize v3.0 ==========
+// 3 波次：解析器获取分块 → 并行精读 → 成稿+质量校验
+// 特性：解析器插件化 / 失败纪律(fatal vs 降级) / 成本控制（maxChunks 强制，块数=子代理数）
+
+// YAML 双引号标量：JSON.stringify 的转义规则是 YAML double-quoted 风格的子集，
+// 标题/作者里出现引号时不会再截断 frontmatter（旧版是裸拼 "..."）。
+function yamlStr(v) { return JSON.stringify(v == null ? "" : String(v)); }
+
+// ---------- 0. 配置校验（fatal 级错误：必须终止） ----------
+const input = (args && args.input || "").trim();
+const forcedType = ((args && args.type) || "auto").toLowerCase();
+const options = (args && args.options) || {};
+const minWords = options.minWords || 2500;
+const fastMode = !!options.fastMode;
+const maxChunks = Math.max(1, Math.min(options.maxChunks || 4, 12));
+const requireCitations = options.requireCitations !== false;
+const includeTimestamps = !!options.includeTimestamps;
+const maxRetries = options.maxRetries || 0;
+const outputDir = options.outputDir || "./output";
+const tempDir = options.tempDir || "./.tmp";
+const tempFile = tempDir.replace(/[\\/]+$/, "") + "/input.txt";
+const whisperModel = options.whisperModel || "small";
+const transcribeLanguage = options.language || "zh";
+const transcribeDevice = options.device || "cpu";
+
+// 幂等不在这里做：脚本沙箱没有文件系统，写不了指纹记录。
+// 需要幂等的调用方请用 lib/cache.js（fingerprint / hasProcessed / markProcessed）。
+
+// ---------- 1. 解析器表：构建时把解析器内联为 __parsers（自包含）；
+//              宿主若注入 args._parsers 则优先使用 ----------
+const parsers = args._parsers || {};
+const parserNames = Object.keys(parsers);
+
+// 配置校验依赖解析器表，必须放在其后
+if (!input) throw new Error("[FATAL] args.input 缺失：请输入内容链接或文件路径");
+if (parserNames.length === 0) throw new Error("[FATAL] 解析器表为空：脚本没有内联任何解析器");
+if (forcedType !== "auto" && parserNames.indexOf(forcedType) === -1)
+  throw new Error("[FATAL] args.type 非法：" + forcedType + "（可用：" + ["auto"].concat(parserNames).join("|") + "）");
+
+phase("解析器选择");
+const kindNames = { book: "书籍", paper: "学术论文", video: "视频", web: "网页/文章" };
+const kindFocus = {
+  book: "按章节主题展开核心论点、论证、关键例子、章节间关系，收集关键概念与可引用原文（含页码/章节）",
+  paper: "四维精读：1)研究问题与方法 2)结论与贡献 3)局限与批判 4)与同类工作比较；收集术语与可引用原文（含章节/段落）",
+  video: "按主题脉络组织，提取核心论点、证据、例子、可操作建议，收集关键概念与主讲人原话" + (includeTimestamps ? "（含时间戳定位）" : "（不标时间戳）"),
+  web: "提取核心论点、结构拆解、关键概念、可引用原文"
+};
+
+// ---------- 2. 波次1：解析器获取 + 分块 ----------
+phase("获取与分块");
+const fetchPrompt = (parsers[forcedType !== "auto" ? forcedType : "web"] || parsers.web || { buildPrompt: function() { return ["未知解析器"]; } })
+  .buildPrompt(input, { tempDir: tempDir, tempFile: tempFile, maxChunks: maxChunks, transcribe: options.transcribe !== false, whisperModel: whisperModel, language: transcribeLanguage, device: transcribeDevice });
+// fetchSchema 由插件在构建时从 schemas/index.js 注入（单一真相，避免两份 schema 漂移）。
+
+const fetched = await agent(fetchPrompt, { schema: fetchSchema, label: "获取+分块", phase: "获取与分块" });
+
+// 失败纪律：内容获取失败 = 可降级错误（返回失败结果，不抛 fatal）
+if (!fetched || !fetched.saved) {
+  return { ok: false, stage: "fetch", fatal: false, message: (fetched && fetched.message) || "获取失败（可降级：检查输入或手动提供文本）" };
+}
+// 分块计划收敛：块数 = 子代理数，计划失控会顶穿 workflow 单次调用时限；
+// 同时挡掉倒置/越界的行号区间（原样透传会让 read 收到 limit<=0）。
+const rawPlan = (fetched && fetched.chunkPlan) || [];
+if (rawPlan.length === 0) return { ok: false, stage: "fetch", fatal: false, message: "分块计划为空" };
+const declaredLines = Math.floor(Number(fetched.totalLines) || 0);
+const chunkPlan = [];
+for (let i = 0; i < rawPlan.length && chunkPlan.length < maxChunks; i++) {
+  const c = rawPlan[i] || {};
+  const s = Math.floor(Number(c.startLine) || 0);
+  const e = Math.floor(Number(c.endLine) || 0);
+  if (s < 1 || e < s) continue;
+  if (declaredLines > 0 && s > declaredLines) continue;
+  chunkPlan.push({
+    id: chunkPlan.length + 1,
+    topic: String(c.topic || ("块 " + (chunkPlan.length + 1))),
+    startLine: s,
+    endLine: declaredLines > 0 ? Math.min(e, declaredLines) : e
+  });
+}
+if (chunkPlan.length === 0) return { ok: false, stage: "fetch", fatal: false, message: "分块计划无效：行号区间缺失或非法" };
+if (chunkPlan.length < rawPlan.length) log("分块计划收敛：" + rawPlan.length + " -> " + chunkPlan.length + " 块（上限 " + maxChunks + "）");
+
+// 类型：auto 时只接受解析器表里真实存在的类型，否则退回回退解析器，
+// 避免 "auto" 这种非法值流进 frontmatter 的 type / tags。
+let kind = forcedType;
+if (forcedType === "auto") {
+  kind = (typeof fetched.kind === "string" && parserNames.indexOf(fetched.kind) !== -1)
+    ? fetched.kind
+    : (parserNames.indexOf("web") !== -1 ? "web" : parserNames[0]);
+}
+const metadata = (fetched && fetched.metadata) || {};
+const textSource = (metadata && metadata.textSource) || "unknown";
+const srcLabels = { desc: "视频简介/desc", subtitle: "平台字幕", transcription: "完整语音转写", manual: "用户提供转写文本" };
+const srcLabel = srcLabels[textSource] || textSource;
+log("[source] " + textSource + " -> " + srcLabel);
+log("类型:" + kind + " 行数:" + fetched.totalLines + " 块数:" + chunkPlan.length);
+
+// ---------- 3. 波次2：并行精读（Map） ----------
+phase("并行精读");
+const chunkPrompts = chunkPlan.map(function (c) {
+  return [
+    "请深度精读以下内容块，输出结构化精读笔记。",
+    "内容类型：" + (kindNames[kind] || kind) + " | 本块主题：" + c.topic,
+    "精读侧重：" + (kindFocus[kind] || kindFocus.web),
+    "用 read 工具读取 " + tempFile + " 第 " + c.startLine + " 到 " + c.endLine + " 行（offset=" + c.startLine + ", limit=" + (c.endLine - c.startLine + 1) + "），然后输出：",
+    "## 本块主题：" + c.topic,
+    "### 要点（详细展开，保留数据/例子/论证）",
+    "### 关键概念（术语+解释）",
+    "### 关键引用（最多2句原文+位置）" + (requireCitations ? "，必须标注页码/章节/段落位置" : ""),
+    "### 批判观察（如有）"
+  ].join("\n");
+});
+
+const reads = [];
+const readBatch = 3;
+for (let bi = 0; bi < chunkPrompts.length; bi += readBatch) {
+  const batch = chunkPrompts.slice(bi, bi + readBatch);
+  const batchReads = await parallel(batch.map(function (p) {
+    return function () { return agent(p, { label: "精读块", phase: "并行精读" }); };
+  }));
+  for (let k = 0; k < batchReads.length; k++) reads.push(batchReads[k]);
+}
+const validReads = reads.filter(function (r) { return r && r.trim && r.trim().length > 0; });
+
+// 失败纪律：某块精读失败 = 可降级（跳过该块，标记缺口继续）
+const failedChunks = chunkPlan.length - validReads.length;
+if (validReads.length === 0) return { ok: false, stage: "read", fatal: false, message: "所有分块精读均失败" };
+if (failedChunks > 0) log("警告：" + failedChunks + " 块精读失败，标记缺口继续成稿");
+log("精读完成：" + validReads.length + "/" + chunkPlan.length);
+
+// ---------- 4. 波次3：成稿 + 内嵌质量自检（Reduce） ----------
+phase("汇总成稿");
+const todayDate = new Date();
+const today = todayDate.getFullYear() + "-" + ("0" + (todayDate.getMonth() + 1)).slice(-2) + "-" + ("0" + todayDate.getDate()).slice(-2);
+// 标题先折叠换行/制表与连续空白：否则会同时污染 .md 文件名和 frontmatter。
+const finalTitle = String(metadata.title || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim() || "未命名内容";
+// 文件名清洗：去掉 Windows 非法字符；全部非法时兜底，避免写出 ./output/.md 这种隐藏文件。
+const safeTitle = finalTitle.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim() || "未命名内容";
+const mdPath = outputDir.replace(/[\\/]+$/, "") + "/" + safeTitle + ".md";
+
+const extraSections = fastMode ? [] : [
+  "", "## 5. 批判性分析（论证强处/弱处/可质疑之处）", "",
+  "## 6. 个人思考与应用（与已有知识联系、如何应用、行动要点）", "",
+  "## 7. 延伸阅读（相关主题/作者其他作品/参考文献）", ""
+];
+
+const draftPrompt = [
+  "将以下多块精读结果整合为完整的结构化精读笔记，只输出标准 Markdown（含 YAML frontmatter）。",
+  "模板：", "---",
+  'title: ' + yamlStr("《" + finalTitle + "》深度精读笔记"),
+  "aliases: [" + yamlStr(finalTitle) + "]",
+  "author: " + yamlStr(metadata.author),
+  "year: " + yamlStr(metadata.year),
+  "type: " + yamlStr(kind),
+  "url: " + yamlStr(metadata.url || input),
+  "tags: [精读, " + (kindNames[kind] || kind) + "]",
+  "created: " + today,
+  "status: 已完成",
+  "---",
+  "# 《" + finalTitle + "》深度精读笔记", "",
+  "> 一句话核心概括。", "",
+  "## 1. 概述（约500字：主题/背景/核心问题/总体结论）", "",
+  "## 2. 结构拆解（按主题组织，含详细要点；关键结论标注原文出处）", "",
+  "## 3. 关键概念与术语表（表格）", "",
+  "## 4. 关键引用（仅关键结论" + (requireCitations ? "，必须标注页码/章节/段落" : "") + "）",
+].concat(extraSections, [
+  "---",
+  "*笔记整理于 " + today + "*", "",
+  "硬性要求：总篇幅≥" + minWords + "字；语言与原文一致；术语统一；引用必须真实；视频" + (includeTimestamps ? "标注时间戳" : "不标注时间戳") + "。",
+  "输出前自检：1)覆盖所有块 2)frontmatter完整 3)各小节齐全 4)引用真实 5)篇幅达标 6)语言一致。",
+  "",
+  "各块精读结果：",
+  validReads.map(function (r, i) { return "\\n===== 块 " + (i + 1) + " =====\\n" + r; }).join("\\n")
+]).join("\n");
+
+let draft = await agent(draftPrompt, { label: "汇总成稿", phase: "汇总成稿" });
+if (!draft || !draft.trim) return { ok: false, stage: "draft", fatal: false, message: "成稿失败" };
+
+// ---------- 5. 质量校验（轻量重试） ----------
+phase("质量校验");
+let verified = draft;
+let passed = false;
+let issues = [];
+for (let round = 0; round <= maxRetries; round++) {
+  const checkPrompt = [
+    "请对总结笔记做质量校验，逐项检查并输出 JSON：",
+    "1.coverage 2.citationsReal 3.terminologyConsistent 4.formatComplete 5.lengthMet(≥" + minWords + "字) 6.languageConsistent",
+    "输出：{ \"pass\": true/false, \"issues\": [\"问题\"] }，只输出 JSON。",
+    "笔记：", verified
+  ].join("\n");
+  const checkSchema = { type: "object", properties: { pass: { type: "boolean" }, issues: { type: "array", items: { type: "string" } } }, required: ["pass","issues"], additionalProperties: false };
+  const check = await agent(checkPrompt, { schema: checkSchema, label: "质量校验", phase: "质量校验" });
+  passed = !!(check && check.pass);
+  issues = (check && check.issues) || [];
+  log("校验：" + (passed ? "通过" : "发现问题 " + issues.length + " 条"));
+  if (passed) break;
+  if (round < maxRetries) {
+    const fixPrompt = [
+      "修正以下笔记以解决校验问题，输出完整修正版：",
+      issues.map(function (s) { return "- " + s; }).join("\n"),
+      "当前笔记：", verified
+    ].join("\n");
+    verified = await agent(fixPrompt, { label: "修正笔记", phase: "质量校验" });
+  }
+}
+
+// ---------- 结果 ----------
+return {
+  ok: true, kind: kind, title: finalTitle,
+  filePath: mdPath, chunksCount: chunkPlan.length, fastMode: fastMode,
+  qualityPassed: passed, qualityIssues: issues,
+  failedChunks: failedChunks,
+  textSource: textSource,
+  note: verified
+};

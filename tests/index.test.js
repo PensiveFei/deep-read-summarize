@@ -516,3 +516,24 @@ test('plugin config: transcription keys are configurable and unknown keys warn',
   assert.ok(seen.some(function (m) { return m.indexOf('whisperModel') >= 0; }),
     'the warning should list the keys that are actually accepted');
 });
+
+test('workflow: the draft prompt asks for Markdown, not for one particular editor', async () => {
+  const r = await runScript({ input: 'x', type: 'paper', options: {} }, makeAgent({}));
+  const draftCall = r.calls.find(function (c) { return c.label === '汇总成稿'; });
+  assert.ok(draftCall, 'the draft phase must run');
+  assert.strictEqual(draftCall.prompt.indexOf('Obsidian'), -1,
+    'the note prompt must not bind the output to a single editor');
+  assert.ok(draftCall.prompt.indexOf('标准 Markdown') >= 0,
+    'the note prompt should ask for standard Markdown');
+});
+
+test('workflow: the script body lives in its own file so it can be edited safely', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'workflow.js'), 'utf8');
+  assert.ok(src.indexOf('readFileSync') >= 0 && src.indexOf('workflow-script.txt') >= 0,
+    'workflow.js must read the script body from lib/workflow-script.txt');
+  assert.ok(src.indexOf('const RAW_SCRIPT = "') === -1,
+    'the script must not be stored as an escaped string literal again');
+  const body = fs.readFileSync(path.join(__dirname, '..', 'lib', 'workflow-script.txt'), 'utf8');
+  assert.ok(body.indexOf('const parsers = args._parsers || {};') >= 0,
+    'the inlining marker must stay in the script body');
+});
