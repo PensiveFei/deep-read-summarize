@@ -78,10 +78,16 @@ parsers/         Parsers for each input type, dispatched by type
   web.js         Web pages: main-text extraction
   index.js       Registry: parser discovery and fallback
 schemas/         JSON Schema for the output contract (injected into the script by workflow.js - single source of truth)
-scripts/         lint, security checks, cross-platform transcription bootstrap (transcribe.js)
-tests/           fixture tests and validation scripts
-workflow.js      The workflow script itself (meta + script)
+scripts/         lint (incl. line-ending/whitespace hygiene), security checks, cross-platform transcription bootstrap
+lib/             Small standalone helpers
+  cache.js         input fingerprint and idempotency records (for callers driving the workflow themselves -- the
+                   workflow sandbox has no filesystem, so it cannot use this)
+  workflow-script.txt  the workflow script body (plain text: read and edit it directly, no escaping involved)
+tests/           tests and validation scripts (**not published to npm**, repo only)
+workflow.js      the workflow meta and assembly logic (parser inlining, schema injection)
 ```
+
+> The script body lives in `lib/workflow-script.txt` on purpose: this file was corrupted twice by "escaping on top of escaping". It is plain text now, so reading and editing it needs no encoding step.
 
 To change how an input type is handled, drop a parser with the same interface into `custom-parsers/`; a type with the same name overrides the built-in implementation, and you can also add a brand-new type name (e.g. `podcast`) - every registered parser is inlined into the workflow script, and both the `type` whitelist and the schema's `kind` enum follow the registry. The interface has only three fields: `name`, `types`, `buildPrompt(input, opts)`.
 

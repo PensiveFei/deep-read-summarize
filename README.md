@@ -78,10 +78,15 @@ parsers/         各输入类型的解析器，按类型分发
   web.js         网页：正文提取
   index.js       注册表：解析器发现与回退
 schemas/         输出约束的 JSON Schema（波次1 由 workflow.js 注入脚本，单一真相）
-scripts/         lint、安全检查、跨平台转写引导（transcribe.js）
-tests/           fixture 测试与验证脚本
-workflow.js      workflow 脚本本体（meta + script）
+scripts/         lint（含换行/空白卫生检查）、安全检查、跨平台转写引导（transcribe.js）
+lib/             独立可用的小工具
+  cache.js         输入指纹与幂等记录（供自己驱动流程的调用方使用；workflow 沙箱没有文件系统，用不到它）
+  workflow-script.txt  workflow 脚本正文（普通文本，可直接读改，不需要任何转义）
+tests/           测试与验证脚本（**不随 npm 包发布**，仓库里才有）
+workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema 注入）
 ```
+
+> 脚本正文单独放 `lib/workflow-script.txt`：这个文件曾经因为「转义套转义」被改坏过两次，现在它是普通文本，读改都不需要编码步骤。
 
 想换某个输入类型的处理方式，在 `custom-parsers/` 放一个同接口的解析器即可，同名类型会覆盖内置实现；用新类型名（如 `podcast`）也可以——注册表里的解析器会全部内联进 workflow 脚本，`type` 白名单与 schema 的 `kind` 枚举都跟着注册表走。接口只有三个字段：`name`、`types`、`buildPrompt(input, opts)`。
 
