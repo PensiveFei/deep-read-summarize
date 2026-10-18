@@ -3,6 +3,35 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.15] — 2026-10-18
+
+这一版动的是**工程卫生**，外加一处提示词措辞。运行时只有一处可感知变化（提示词不再绑定 Obsidian），见「升级提醒」。
+
+### Changed
+
+- **脚本正文不再做成转义字符串**：`workflow.js` 里那条约 10k 字符的 `RAW_SCRIPT` 曾因「转义套转义」被改坏两次，也让每次改动都变成编码练习。现在正文放在 `lib/workflow-script.txt`，`workflow.js` 在加载时读取它。重构前后断言**构建出的 script 逐字节相同**，所以只是搬家、不动行为。
+- **成稿提示词改为「标准 Markdown」**：`draftPrompt` 不再写「整合为完整 Obsidian 精读笔记」，改为「完整的结构化精读笔记，只输出标准 Markdown」。这与 0.3.12 起的定位一致——此前只改了对外文档，产物措辞没跟上。
+- **`lint` 不再是「只查语法」**：`scripts/lint.js` 原来只跑 `node --check`，现在零依赖地检查 UTF-8 BOM、任何 CR（换行必须 LF）、行尾空白、行首制表符、JS 里的 `var`。2026-09-22 与 2026-10-17 两次「工作区被写成 CRLF 造成整文件假 diff」，当时的 lint 一声不响。
+  - 刻意**不做**宽松相等检查：正则分不清代码里的 `x == null` 与字符串里的 `==`，本仓库两者都有，做了只会全是误报。
+- **`.gitattributes` 锁定 LF**：有 5 个文件原本以 CRLF 存储（`CHANGELOG.md` / `package.json` / `lib/cache.js` / `parsers/_prompt.js` / `tests/cache.test.js`），此前完全依赖各人的 `core.autocrlf`。新增 `* text=auto eol=lf` 与二进制声明；本版包含一次性换行规范化（`git diff --ignore-cr-at-eol` 为空，未改任何内容）。
+- **`.env.example` 重写**：原文列的 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `OUTPUT_DIR` / `TEMP_DIR` **代码里一个都不读**，且本项目没有 dotenv 加载器——「复制成 .env」不会有任何效果。现在只文档化真正生效的 `DRS_UV_PYTHON_MIRROR`，并说明 `.env` 不会被加载。
+- **包瘦身**：`files[]` 去掉 `tests/`（约 49 kB unpacked）与无人引用的 `docs/RELEASE-v0.1.0.md`。tarball 81 038 → 64 945 B，unpacked 213 889 → 164 713 B。
+- `lib/cache.js` 的定位在 README 里写清楚了：它是给「自己驱动流程的调用方」用的小工具；workflow 沙箱没有文件系统，用不到它。
+
+### Added
+
+- 2 条回归测试（`node:test` 46 → 48）：成稿提示词不得出现 Obsidian、且必须要求标准 Markdown；脚本正文必须来自独立文件、不得退回转义字符串字面量。
+
+### Compatibility
+
+- 无破坏性变更：`exports`、`engines`、frontmatter 键都未动。
+- **唯一可感知变化**：成稿提示词不再点名 Obsidian。对已有笔记格式没有影响（frontmatter 与章节结构不变）。
+
+### 升级提醒
+
+- 不需要改配置。
+- **包内不再包含 `tests/`**：若你曾靠 `npm test` 验证安装完整性，请改用仓库。
+
 ## [0.3.14] — 2026-10-17
 
 修四个实际缺陷，都属于「声明 / 约定与实际行为不一致」这一类。其中两处**用户可感知**，见「升级提醒」。
