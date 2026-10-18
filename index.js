@@ -73,7 +73,7 @@ function normalizeOptions(config) {
     opts[key] = v;
   }
   // 未知键此前是完全无声的：循环只遍历白名单，写错的键名既不生效也不告警。
-  var unknown = Object.keys(raw).filter(function (k) {
+  const unknown = Object.keys(raw).filter(function (k) {
     return !Object.prototype.hasOwnProperty.call(DEFAULT_OPTIONS, k);
   });
   if (unknown.length) {
