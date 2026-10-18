@@ -1,0 +1,14 @@
+# 统一换行：仓库内一律 LF。
+# 没有这一行时，换行完全取决于每个人的 core.autocrlf：同一个文件在不同机器上
+# 会被检出成 CRLF 或 LF，产生「整文件假 diff」，也会让只改一行的脚本把文件变成
+# MIXED（本项目 2026-09-22 与 2026-10-17 两次被咬）。
+* text=auto eol=lf
+
+# 二进制：不要当文本处理，也不要做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.tgz binary
+*.zip binary
