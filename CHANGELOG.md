@@ -3,6 +3,47 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.16] — 2026-10-18
+
+新增 `options.frontmatter` 三档，解决 frontmatter 在 Hugo 里的语义冲突。**默认档与历史行为逐字一致**，不构成破坏性变更。
+
+### Added
+
+- **`options.frontmatter`：`obsidian`（默认）/ `generic` / `minimal`**。
+  - `obsidian`：`title` / `aliases` / `author` / `year` / `type` / `url` / `tags` / `created` / `status` —— 与 0.3.15 及更早逐字一致，现有 Dataview 查询不受影响。
+  - `generic`：把 Hugo 的保留键换掉 —— `type` → `docType`、`url` → `sourceUrl`、`created` → `date`，并去掉 `aliases`。
+  - `minimal`：只留 `title` / `date` / `sourceUrl` / `tags`。
+  - 非法值 → **FATAL 终止**（与 `type` 的失败纪律一致，不静默降级）。
+
+### Why
+
+`type`、`aliases`、`url` 在 Hugo 里都是保留键，语义与 Obsidian 完全不同 —— 把笔记直接丢进 Hugo 会**改变渲染行为**，而不是多出几个无害字段：
+
+| 键 | Hugo 里的含义 |
+| --- | --- |
+| `type` | 内容类型，决定用哪套 layout（`type: video` 会让它去找 `layouts/video/`） |
+| `aliases` | 一组会重定向到本页的旧 URL |
+| `url` | 覆盖页面自身的路径 —— 来源链接会变成文章永久链接 |
+| `created` | 不是 Hugo/Jekyll 的键；`date` 才是 |
+
+### Changed
+
+- `index.js` 白名单补 `frontmatter`；`cordis.patch.yml` / `SKILL.md` / README ×2 同步说明。
+- 修 `screenshots.json`：4 个路径由相对路径改成**绝对 `raw.githubusercontent.com` URL** —— 市场客户端的截图白名单只接受 GitHub 图床的绝对 https 地址，相对路径会被静默丢弃。该文件**不随 npm 包发布**：截图来自 registry（GitHub 侧索引），不是 npm 包。
+
+### Added（测试）
+
+- 4 条回归测试（`node:test` 48 → 52）：默认档保留全部 9 个键；`generic` 必须去掉 `aliases` / `type` / `url` / `created` 并改用 `docType` / `sourceUrl` / `date`；`minimal` 恰好 4 个键；非法档位必须报错而不是静默忽略。
+
+### Compatibility
+
+- **无破坏性变更**：不传 `frontmatter` 时产物与 0.3.15 逐字相同。
+
+### 升级提醒
+
+- 想直接放进 Hugo / Jekyll 又不改渲染行为：设 `options.frontmatter: "generic"`。
+- 已生成的笔记不受影响，新选项只作用于之后的生成。
+
 ## [0.3.15] — 2026-10-18
 
 这一版动的是**工程卫生**，外加一处提示词措辞。运行时只有一处可感知变化（提示词不再绑定 Obsidian），见「升级提醒」。
