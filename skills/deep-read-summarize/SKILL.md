@@ -23,7 +23,14 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 ## 输入
 
 用户提供：内容链接或本地文件路径。
-可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / outputDir / tempDir）。
+可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / outputDir / tempDir / frontmatter）。
+
+`options.frontmatter` 决定 frontmatter 用哪套键（默认 `obsidian`，与历史行为一致）：
+- `obsidian`：title / aliases / author / year / type / url / tags / created / status —— 配 Dataview 用这套
+- `generic`：把 Hugo 的保留键换掉（`type` → `docType`、`url` → `sourceUrl`、`created` → `date`），可直接放进 Hugo / Jekyll
+- `minimal`：只留 title / date / sourceUrl / tags
+
+**为什么要分档**：`type`、`aliases`、`url` 在 Hugo 里是保留键且语义不同（分别决定 layout、URL 重定向、页面路径），把 Obsidian 的写法直接丢给 Hugo 会改变渲染行为，而不是多出几个无害字段。
 
 ## 执行步骤
 

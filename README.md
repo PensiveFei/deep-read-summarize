@@ -195,6 +195,7 @@ parsers: book, paper, video, web
     "language": "zh",         // 视频转写语言：纯英文视频可设 "en"
     "device": "cpu",          // 转写设备：cpu（默认）| auto | cuda；auto/cuda 需自备 CUDA 运行库，失败自动回退 cpu
     "maxRetries": 0,          // 质量校验重试次数（默认 0 = 不重试，重试会明显变慢）
+    "frontmatter": "obsidian", // frontmatter 键集：obsidian（默认，配 Dataview）| generic（换掉 Hugo 保留键）| minimal
     "requireCitations": true, // 关键结论是否必须标注出处
     "includeTimestamps": false,
     "outputDir": "./output",    // 笔记输出目录（可指向 Obsidian 仓库或静态站点内容目录）
@@ -213,6 +214,33 @@ parsers: book, paper, video, web
 | 网页 | `https://example.com/article` |
 
 笔记写到 `options.outputDir` 指定的目录（默认 `./output`，可指向你的 Obsidian 仓库或静态站点内容目录），文件名取自内容标题。
+
+### frontmatter 三档（`options.frontmatter`）
+
+默认 `obsidian`，与历史版本**逐字一致**。之所以要分档：`type`、`aliases`、`url` 在 Hugo 里是**保留键**，语义和 Obsidian 完全不同——直接丢进 Hugo 会改变渲染行为，而不是多几个无害字段。
+
+| 键 | `obsidian`（默认） | `generic` | `minimal` |
+|---|---|---|---|
+| `title` | ✓ | ✓ | ✓ |
+| `aliases` | ✓ | — | — |
+| `author` / `year` | ✓ | ✓ | — |
+| `type` | ✓ | — | — |
+| `docType` | — | ✓ | — |
+| `url` | ✓ | — | — |
+| `sourceUrl` | — | ✓ | ✓ |
+| `tags` | ✓ | ✓ | ✓ |
+| `created` | ✓ | — | — |
+| `date` | — | ✓ | ✓ |
+| `status` | ✓ | ✓ | — |
+
+为什么 `generic` 要换键：
+
+- `type` 在 Hugo 里决定**用哪套 layout**（`type: video` 会让它去找 `layouts/video/`）
+- `aliases` 在 Hugo 里是**一组会重定向到本页的旧 URL**
+- `url` 在 Hugo 里会**覆盖页面自身的路径**——来源链接会变成文章的永久链接
+- `date` 才是 Hugo/Jekyll 都认的时间键；`created` 只是自定义字段
+
+非法值直接 FATAL 终止（与 `type` 的失败纪律一致，不静默降级）。
 
 ### 视频：完整逐字稿（字幕优先，无字幕自动转写）
 

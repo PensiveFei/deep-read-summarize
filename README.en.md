@@ -196,6 +196,7 @@ Pass this JSON to DSH's workflow tool:
     "language": "zh",         // video ASR language: use "en" for English-only videos
     "device": "cpu",          // ASR device: cpu (default) | auto | cuda; auto/cuda needs a CUDA runtime and falls back to cpu
     "maxRetries": 0,          // quality-check retries (default 0 = no retry; retrying is noticeably slower)
+    "frontmatter": "obsidian", // key set: obsidian (default, for Dataview) | generic (drops the keys Hugo reserves) | minimal
     "requireCitations": true, // whether key conclusions must carry citations
     "includeTimestamps": false,
     "outputDir": "./output",    // note output directory (can point at your Obsidian vault or a static-site content folder)
@@ -214,6 +215,33 @@ Examples:
 | Web page | `https://example.com/article` |
 
 Notes are written to `options.outputDir` (default `./output`, can point at your Obsidian vault or a static-site content folder), with the filename taken from the content title.
+
+### Frontmatter profiles (`options.frontmatter`)
+
+The default is `obsidian`, byte-for-byte what earlier versions produced. Profiles exist because `type`, `aliases` and `url` are **reserved keys in Hugo** with different meanings -- dropping an Obsidian note into Hugo changes how the page renders, rather than adding a few harmless fields.
+
+| Key | `obsidian` (default) | `generic` | `minimal` |
+|---|---|---|---|
+| `title` | yes | yes | yes |
+| `aliases` | yes | -- | -- |
+| `author` / `year` | yes | yes | -- |
+| `type` | yes | -- | -- |
+| `docType` | -- | yes | -- |
+| `url` | yes | -- | -- |
+| `sourceUrl` | -- | yes | yes |
+| `tags` | yes | yes | yes |
+| `created` | yes | -- | -- |
+| `date` | -- | yes | yes |
+| `status` | yes | yes | -- |
+
+Why `generic` renames things:
+
+- `type` in Hugo selects the **layout** (`type: video` makes it look for `layouts/video/`)
+- `aliases` in Hugo is **a list of old URLs that redirect to this page**
+- `url` in Hugo **overrides the page's own path** -- the source link would become the article's permalink
+- `date` is the time key both Hugo and Jekyll understand; `created` is just a custom field
+
+An unknown value is fatal rather than silently ignored, matching how `type` is handled.
 
 ### Video: full transcript (subtitles first, auto-transcription when none)
 

@@ -537,3 +537,52 @@ test('workflow: the script body lives in its own file so it can be edited safely
   assert.ok(body.indexOf('const parsers = args._parsers || {};') >= 0,
     'the inlining marker must stay in the script body');
 });
+
+// ============================================================================
+// 0.3.16：frontmatter 档位（默认不变；generic 换掉 Hugo 保留键）
+// ============================================================================
+
+async function draftWith(options) {
+  const r = await runScript({ input: 'x', type: 'paper', options: options || {} }, makeAgent({}));
+  const call = r.calls.find(function (c) { return c.label === '汇总成稿'; });
+  assert.ok(call, 'the draft phase must run');
+  return call.prompt;
+}
+
+function frontmatterBlock(prompt) {
+  const open = prompt.indexOf('---');
+  const close = prompt.indexOf('---', open + 3);
+  assert.ok(open >= 0 && close > open, 'frontmatter block not found in the draft prompt');
+  return prompt.slice(open, close).split('\n').filter(function (l) { return /^\s*[A-Za-z]+\s*:/.test(l); });
+}
+
+test('workflow: frontmatter defaults to the unchanged obsidian profile', async () => {
+  const block = frontmatterBlock(await draftWith({})).join('\n');
+  for (const key of ['title', 'aliases', 'author', 'year', 'type', 'url', 'tags', 'created', 'status']) {
+    assert.ok(new RegExp('^' + key + ':', 'm').test(block), 'the default profile must keep ' + key);
+  }
+  assert.ok(/^type: "paper"$/m.test(block), 'type must carry the content kind by default');
+});
+
+test('workflow: the generic profile drops the keys Hugo reserves', async () => {
+  const block = frontmatterBlock(await draftWith({ frontmatter: 'generic' })).join('\n');
+  assert.ok(!/^aliases:/m.test(block), 'aliases means URL redirects in Hugo');
+  assert.ok(!/^type:/m.test(block), 'type picks the layout in Hugo');
+  assert.ok(!/^url:/m.test(block), 'url overrides the page path in Hugo');
+  assert.ok(!/^created:/m.test(block), 'created is not a Hugo/Jekyll key');
+  assert.ok(/^docType: "paper"$/m.test(block), 'the kind moves to a custom key');
+  assert.ok(/^sourceUrl:/m.test(block), 'the source moves to a custom key');
+  assert.ok(/^date: \d{4}-\d{2}-\d{2}$/m.test(block), 'date is the key both engines understand');
+});
+
+test('workflow: the minimal profile keeps only four keys', async () => {
+  const lines = frontmatterBlock(await draftWith({ frontmatter: 'minimal' }));
+  const keys = lines.map(function (l) { return l.trim().split(':')[0]; }).sort();
+  assert.deepStrictEqual(keys, ['date', 'sourceUrl', 'tags', 'title']);
+});
+
+test('workflow: an unknown frontmatter profile is fatal, not silently ignored', async () => {
+  await assert.rejects(
+    function () { return runScript({ input: 'x', type: 'paper', options: { frontmatter: 'hugo' } }, makeAgent({})); },
+    /frontmatter/);
+});

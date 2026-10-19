@@ -37,7 +37,8 @@ const DEFAULT_OPTIONS = {
   whisperModel: 'small',
   language: 'zh',
   device: 'cpu',
-  maxRetries: 0
+  maxRetries: 0,
+  frontmatter: 'obsidian'
 };
 
 const OPTION_TYPES = {
@@ -52,7 +53,8 @@ const OPTION_TYPES = {
   whisperModel: 'string',
   language: 'string',
   device: 'string',
-  maxRetries: 'number'
+  maxRetries: 'number',
+  frontmatter: 'string'
 };
 
 /**

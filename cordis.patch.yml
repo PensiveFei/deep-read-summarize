@@ -26,6 +26,9 @@
 #     language: 'zh'             # transcription language (default: zh)
 #     device: 'cpu'              # cpu | auto | cuda; GPU needs a CUDA runtime (default: cpu)
 #     maxRetries: 0              # quality-check retry rounds (default: 0)
+#     frontmatter: 'obsidian'    # obsidian | generic | minimal (default: obsidian)
+#                                #   generic swaps the keys Hugo reserves: type -> docType,
+#                                #   url -> sourceUrl, created -> date; minimal keeps four keys
 #
 # Idempotency is deliberately NOT a plugin config key: the workflow script runs
 # without a filesystem, so it cannot write a fingerprint record. Programmatic

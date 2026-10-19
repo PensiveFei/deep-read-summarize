@@ -22,6 +22,14 @@ const tempFile = tempDir.replace(/[\\/]+$/, "") + "/input.txt";
 const whisperModel = options.whisperModel || "small";
 const transcribeLanguage = options.language || "zh";
 const transcribeDevice = options.device || "cpu";
+// frontmatter 档位。默认 obsidian = 历史行为，逐字不变（现有用户的 Dataview 查询依赖 type / status）。
+// generic 档换掉三个「Hugo 保留键」：type -> docType、url -> sourceUrl、created -> date（date 才是标准键）；
+// minimal 档只留 title / date / sourceUrl / tags。
+const FM_PROFILES = ["obsidian", "generic", "minimal"];
+const fmProfile = String(options.frontmatter || "obsidian").toLowerCase();
+if (FM_PROFILES.indexOf(fmProfile) === -1) {
+  throw new Error("[FATAL] options.frontmatter 非法：" + options.frontmatter + "（可用：" + FM_PROFILES.join("|") + "）");
+}
 
 // 幂等不在这里做：脚本沙箱没有文件系统，写不了指纹记录。
 // 需要幂等的调用方请用 lib/cache.js（fingerprint / hasProcessed / markProcessed）。
@@ -144,26 +152,46 @@ const extraSections = fastMode ? [] : [
   "## 7. 延伸阅读（相关主题/作者其他作品/参考文献）", ""
 ];
 
+// frontmatter 按档位组装。obsidian 档与历史版本逐字一致，不动既有用户的 Dataview 查询。
+const fm = ["---"];
+if (fmProfile === "obsidian") {
+  fm.push('title: ' + yamlStr("《" + finalTitle + "》深度精读笔记"));
+  fm.push("aliases: [" + yamlStr(finalTitle) + "]");
+  fm.push("author: " + yamlStr(metadata.author));
+  fm.push("year: " + yamlStr(metadata.year));
+  fm.push("type: " + yamlStr(kind));
+  fm.push("url: " + yamlStr(metadata.url || input));
+  fm.push("tags: [精读, " + (kindNames[kind] || kind) + "]");
+  fm.push("created: " + today);
+  fm.push("status: 已完成");
+} else if (fmProfile === "generic") {
+  fm.push('title: ' + yamlStr("《" + finalTitle + "》深度精读笔记"));
+  fm.push("date: " + today);
+  fm.push("author: " + yamlStr(metadata.author));
+  fm.push("year: " + yamlStr(metadata.year));
+  fm.push("docType: " + yamlStr(kind));
+  fm.push("sourceUrl: " + yamlStr(metadata.url || input));
+  fm.push("tags: [精读, " + (kindNames[kind] || kind) + "]");
+  fm.push("status: 已完成");
+} else {
+  fm.push('title: ' + yamlStr("《" + finalTitle + "》深度精读笔记"));
+  fm.push("date: " + today);
+  fm.push("sourceUrl: " + yamlStr(metadata.url || input));
+  fm.push("tags: [精读, " + (kindNames[kind] || kind) + "]");
+}
+fm.push("---");
+
 const draftPrompt = [
   "将以下多块精读结果整合为完整的结构化精读笔记，只输出标准 Markdown（含 YAML frontmatter）。",
-  "模板：", "---",
-  'title: ' + yamlStr("《" + finalTitle + "》深度精读笔记"),
-  "aliases: [" + yamlStr(finalTitle) + "]",
-  "author: " + yamlStr(metadata.author),
-  "year: " + yamlStr(metadata.year),
-  "type: " + yamlStr(kind),
-  "url: " + yamlStr(metadata.url || input),
-  "tags: [精读, " + (kindNames[kind] || kind) + "]",
-  "created: " + today,
-  "status: 已完成",
-  "---",
+  "模板："
+].concat(fm, [
   "# 《" + finalTitle + "》深度精读笔记", "",
   "> 一句话核心概括。", "",
   "## 1. 概述（约500字：主题/背景/核心问题/总体结论）", "",
   "## 2. 结构拆解（按主题组织，含详细要点；关键结论标注原文出处）", "",
   "## 3. 关键概念与术语表（表格）", "",
   "## 4. 关键引用（仅关键结论" + (requireCitations ? "，必须标注页码/章节/段落" : "") + "）",
-].concat(extraSections, [
+], extraSections, [
   "---",
   "*笔记整理于 " + today + "*", "",
   "硬性要求：总篇幅≥" + minWords + "字；语言与原文一致；术语统一；引用必须真实；视频" + (includeTimestamps ? "标注时间戳" : "不标注时间戳") + "。",
