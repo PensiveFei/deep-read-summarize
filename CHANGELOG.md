@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.3.16] — 2026-10-18
+## [0.3.16] — 2026-10-19
 
 新增 `options.frontmatter` 三档，解决 frontmatter 在 Hugo 里的语义冲突。**默认档与历史行为逐字一致**，不构成破坏性变更。
 
