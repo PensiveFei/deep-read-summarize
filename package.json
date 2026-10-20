@@ -20,6 +20,7 @@
     "lib",
     "skills",
     "scripts",
+    "!scripts/release.js",
     "docs/RELEASE.md",
     "cordis.patch.yml",
     "CHANGELOG.md",
