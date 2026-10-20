@@ -132,7 +132,9 @@ function preflight() {
   if (allowed.length) die('工作区不干净（只允许 CHANGELOG.md 未提交）：\n' + dirty.join('\n'));
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
   if (branch !== 'main') die('当前在 ' + branch + '，发布只允许在 main 上');
-  run('git', ['fetch', 'origin', 'main', '--quiet'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  // stderr 必须 pipe（而不是 ignore）：否则失败时 err.stderr 是 null，
+  // 报错只剩一句 `Command failed`，完全看不出 git 为什么退出 128。
+  run('git', ['fetch', 'origin', 'main', '--quiet'], { stdio: ['ignore', 'pipe', 'pipe'] });
   if (git('rev-parse', 'HEAD') !== git('rev-parse', 'origin/main')) {
     die('本地 main 与 origin/main 不一致（先 push 或 pull）');
   }
