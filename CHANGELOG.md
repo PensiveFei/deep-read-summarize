@@ -3,6 +3,31 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.17] — 2026-10-20
+
+修两个「对外暴露、内部没人盯着」的缺陷，并把发布流程自动化。
+
+### Fixed
+
+- **`parsers.resolve()` 在原型链名字上不回退**：它用裸方括号查表，于是 `resolve("constructor")` 返回 `Object` 构造函数、`resolve("toString")` 返回 `toString`、`resolve("__proto__")` 返回 `Object.prototype` —— 这些都没有 `buildPrompt`，调用方拿到的是 `TypeError`，而不是文档承诺的「未知类型回退 web」。现在用 `hasOwnProperty` 守住查表。
+  - 影响面：workflow 本身打不到这条路径（它先用 `Object.keys` 校验 type），但 `resolve()` 是公开导出，程序化调用方传入用户输入就会中招。
+- **`qualityChecklistSchema` 声明 6 个门，只 `required` 5 个**：漏了 `languageConsistent`，而 workflow 的质量校验提示词问的正是 6 项。夹具测试还写着 `required.length === 5`，等于在断言这个 bug。现在断言改成「`required` == 声明的布尔项集合」，这才是该守的不变量。
+
+### Added
+
+- **`scripts/release.js` + `npm run release`**：发布自动化。发布日期在**运行时**取、CHANGELOG 必须与之一致、`RELEASE.md` 与本地/远端 tag 都不得已有该版本、门禁先跑、先推 tag 再建 Release、成败只认日志里的 `+ 包名@版本`、说明从 CHANGELOG 小节原样生成（发布说明与变更日志不会再各说一套）。
+  - 它存在的理由：手工流程踩过三次 —— 发布日期写错两次（0.3.12 与 0.3.16）、`docs/RELEASE.md` 未更新导致 publish 被 tag 校验拦下一次（0.3.13）。
+  - 脚本本身**不进 npm 包**（`files[]` 用 `!scripts/release.js` 排除）；`scripts/transcribe.js` 仍随包发布。
+- 2 条回归测试（`node:test` 52 → 54）：原型链名字必须回退到 web；质量清单的 `required` 必须等于声明的门数。
+
+### Compatibility
+
+- 无破坏性变更。行为上有两处**变严格**：`resolve()` 对原型链名字从「返回垃圾」改为「回退 web」；质量清单 schema 的 `required` 多了 `languageConsistent`。
+
+### 升级提醒
+
+- 不需要改配置。
+
 ## [0.3.16] — 2026-10-19
 
 新增 `options.frontmatter` 三档，解决 frontmatter 在 Hugo 里的语义冲突。**默认档与历史行为逐字一致**，不构成破坏性变更。
