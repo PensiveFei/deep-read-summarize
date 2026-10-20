@@ -298,27 +298,53 @@ if (!has('--yes')) {
   process.exit(0);
 }
 
-gates();
-writeVersion(ver);
-updateReleaseTable(ver, oldVer, summary);
-info('已更新 package.json 与 docs/RELEASE.md');
+/** 把底层工具的错误归一下类：断网 / 权限 / 其它，好给出人话而不是堆栈。 */
+function classify(err) {
+  const blob = String((err && (err.stderr || err.stdout)) || '') + ' ' + String((err && err.message) || '');
+  if (/ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|unable to access|Could not resolve|timed out|network/i.test(blob)) return 'network';
+  if (/auth|credential|Permission denied|403|404 Not Found/i.test(blob)) return 'auth';
+  return 'other';
+}
 
-git('add', 'package.json', 'CHANGELOG.md', 'docs/RELEASE.md');
-git('commit', '-m', 'chore(release): ' + ver);
-git('tag', '-a', 'v' + ver, '-m', 'v' + ver);
-info('已提交并打 tag v' + ver);
+function firstLine(err) {
+  const blob = String((err && (err.stderr || err.stdout)) || (err && err.message) || '');
+  return blob.split('\n').map(function (s) { return s.trim(); }).filter(Boolean)[0] || String(err);
+}
 
-git('push', 'origin', 'main');
-git('push', 'origin', 'v' + ver);
-info('已推送 main 与 tag');
+try {
+  gates();
+  writeVersion(ver);
+  updateReleaseTable(ver, oldVer, summary);
+  info('已更新 package.json 与 docs/RELEASE.md');
 
-dispatchPublish(ver, true);
-info('dry-run 通过');
+  git('add', 'package.json', 'CHANGELOG.md', 'docs/RELEASE.md');
+  git('commit', '-m', 'chore(release): ' + ver);
+  git('tag', '-a', 'v' + ver, '-m', 'v' + ver);
+  info('已提交并打 tag v' + ver);
 
-const realRun = dispatchPublish(ver, false);
-assertPublished(realRun, ver);
+  git('push', 'origin', 'main');
+  git('push', 'origin', 'v' + ver);
+  info('已推送 main 与 tag');
 
-createRelease(ver, section);
+  dispatchPublish(ver, true);
+  info('dry-run 通过');
+
+  const realRun = dispatchPublish(ver, false);
+  assertPublished(realRun, ver);
+
+  createRelease(ver, section);
+} catch (e) {
+  const kind = classify(e);
+  if (kind === 'network') {
+    die('网络不可用：' + firstLine(e),
+      '恢复网络后先确认停在哪一步（git status / git log --oneline -1 / gh run list），再重跑本脚本。' +
+      '已提交的 commit 与已推的 tag 不会重复创建，脚本会因为这些断言而停下并告诉你。');
+  }
+  if (kind === 'auth') {
+    die('权限/凭据问题：' + firstLine(e), '先跑 gh auth status 确认登录状态。');
+  }
+  die('执行失败：' + firstLine(e));
+}
 
 console.log('\n[release] 完成：v' + ver);
 console.log('[release] 别忘了（本脚本不做）：');
