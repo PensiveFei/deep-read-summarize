@@ -34,7 +34,26 @@
 
 ## npm 发布流程
 
-### 首选：npm Trusted Publishing（OIDC，无 token、无 OTP）
+### 首选：`npm run release`（自动化，2026-10-19 起）
+
+```bash
+# 1. 先在 CHANGELOG.md 顶部写好这一版的小节，日期必须是今天：
+#      ## [X.Y.Z] — YYYY-MM-DD
+# 2. 看计划（不做任何写操作）
+npm run release
+# 3. 真发
+npm run release -- --yes            # 或 --minor / --major / --version X.Y.Z
+```
+
+脚本逐条校验：工作区干净（**只允许 `CHANGELOG.md` 未提交**，它会并进发布 commit）、在 `main`、与 `origin/main` 一致、CHANGELOG 里已有目标版本**且日期等于今天**、`docs/RELEASE.md` 与本地/远端 tag 都没有该版本。
+
+然后依次：跑门禁 → bump `package.json` → 更新版本表 → commit → tag → push → dispatch（**先 dry-run 再真发**）→ **只认日志里的 `+ 包名@版本`** → 用 npm 同字节建 Release。
+
+发布说明从 CHANGELOG 对应小节**原样生成**，不再手写，因此说明与变更日志不会各说一套。
+
+它存在的理由：手工流程曾踩过三次坑 —— 发布日期写错两次（0.3.12、0.3.16）、`docs/RELEASE.md` 没更新导致 publish 被 tag 校验拦下一次（0.3.13）。
+
+### 手工路径（脚本不可用时）：npm Trusted Publishing（OIDC，无 token、无 OTP）
 
 ```yaml
 .github/workflows/publish.yml  ←  手动 dispatch（首选，可靠）/ Release 被发布 / 历史 tag 补发

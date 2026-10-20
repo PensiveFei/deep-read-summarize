@@ -586,3 +586,11 @@ test('workflow: an unknown frontmatter profile is fatal, not silently ignored', 
     function () { return runScript({ input: 'x', type: 'paper', options: { frontmatter: 'hugo' } }, makeAgent({})); },
     /frontmatter/);
 });
+
+test('release script: --help spells out the preconditions it enforces', () => {
+  const { execFileSync } = require('node:child_process');
+  const out = execFileSync(process.execPath,
+    [path.join(__dirname, '..', 'scripts', 'release.js'), '--help'], { encoding: 'utf8' });
+  assert.ok(out.indexOf('CHANGELOG.md') >= 0, 'the help must mention the CHANGELOG precondition');
+  assert.ok(out.indexOf('--yes') >= 0, 'the help must mention how to actually run it');
+});
