@@ -210,11 +210,30 @@ function assertPublished(runId, ver) {
   info('日志判据通过：+ ' + NAME + '@' + ver);
 }
 
+/**
+ * 从 registry 取回刚发布的字节。
+ * 必须重试：npm 写完后 registry 要 1–2 分钟才对外可见，当场 `npm pack` 必然 E404
+ * （本项目的既有教训：0.3.9 那次 ~120s、0.3.10 那次 ~140s 才可见）。
+ */
+function packPublished(ver, tmp) {
+  let last = null;
+  for (let i = 0; i < 12; i++) {
+    try {
+      run(NPM, ['pack', NAME + '@' + ver, '--pack-destination', tmp], { stdio: 'pipe' });
+      const tgz = fs.readdirSync(tmp).filter(function (f) { return f.endsWith('.tgz'); })[0];
+      if (tgz) return tgz;
+    } catch (e) {
+      last = e;
+    }
+    info('registry 尚不可见（第 ' + (i + 1) + '/12 次），20 秒后重试…');
+    sleep(20000);
+  }
+  die('等了约 4 分钟仍取不到 ' + NAME + '@' + ver, last ? firstLine(last) : '');
+}
+
 function createRelease(ver, section) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'drs-release-'));
-  run(NPM, ['pack', NAME + '@' + ver, '--pack-destination', tmp], { stdio: 'pipe' });
-  const tgz = fs.readdirSync(tmp).filter(function (f) { return f.endsWith('.tgz'); })[0];
-  if (!tgz) die('npm pack 没有产出 tgz');
+  const tgz = packPublished(ver, tmp);
   const abs = path.join(tmp, tgz);
   const buf = fs.readFileSync(abs);
   const sha = crypto.createHash('sha256').update(buf).digest('hex');
