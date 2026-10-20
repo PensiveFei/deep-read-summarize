@@ -50,8 +50,15 @@ test('fetchResultSchema requires saved', () => {
   assert.ok(schemas.fetchResultSchema.required.includes('saved'));
 });
 
-test('qualityChecklistSchema requires 5 gates', () => {
-  assert.strictEqual(schemas.qualityChecklistSchema.required.length, 5);
+test('qualityChecklistSchema requires every gate it declares', () => {
+  // 断言的是「声明的布尔项 == required」，而不是写死一个数字：
+  // 此前它声明 6 项、required 只有 5 项（漏了 languageConsistent），
+  // 而测试把 5 写死了，于是这个缺口一直没被发现。
+  const declared = Object.keys(schemas.qualityChecklistSchema.properties)
+    .filter((k) => k !== 'issues')
+    .sort();
+  assert.deepStrictEqual(schemas.qualityChecklistSchema.required.slice().sort(), declared);
+  assert.strictEqual(declared.length, 6, 'coverage/citationsReal/terminologyConsistent/formatComplete/lengthMet/languageConsistent');
 });
 
 // ---------- Test: workflow script parses ----------

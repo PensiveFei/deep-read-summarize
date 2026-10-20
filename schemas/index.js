@@ -106,7 +106,7 @@ const qualityChecklistSchema = {
     languageConsistent: { type: "boolean" },
     issues: { type: "array", items: { type: "string" } }
   },
-  required: ["coverage", "citationsReal", "terminologyConsistent", "formatComplete", "lengthMet"],
+  required: ["coverage", "citationsReal", "terminologyConsistent", "formatComplete", "lengthMet", "languageConsistent"],
   additionalProperties: false
 };
 
