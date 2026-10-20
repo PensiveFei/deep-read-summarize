@@ -18,7 +18,7 @@
 //   node scripts/release.js --help
 'use strict';
 
-const { execFileSync } = require('node:child_process');
+const { execFileSync, execSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -36,8 +36,11 @@ function die(m, hint) {
   process.exit(1);
 }
 
-/** Windows 上 npm 是 .cmd，直接 execFile 会 ENOENT（本项目的既有教训）。 */
-const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+/**
+ * npm 必须走 shell（execSync），不能用 execFileSync。
+ * Windows 上 npm 是 npm.cmd，而 Node 20.12+ 为了修 CVE-2024-27980，禁止不经 shell
+ * 直接 spawn .cmd/.bat —— 会抛 `spawnSync npm.cmd EINVAL`。
+ */
 
 function run(cmd, cmdArgs, opts) {
   return String(execFileSync(cmd, cmdArgs, Object.assign({ cwd: ROOT, encoding: 'utf8' }, opts || {}))).trim();
@@ -139,7 +142,7 @@ function gates() {
   const steps = ['lint', 'test', 'test:node', 'security', 'validate'];
   for (const s of steps) {
     info('门禁：npm run ' + s);
-    execFileSync(NPM, ['run', s], { cwd: ROOT, stdio: 'inherit' });
+    execSync('npm run ' + s, { cwd: ROOT, stdio: 'inherit' });
   }
 }
 
@@ -219,7 +222,8 @@ function packPublished(ver, tmp) {
   let last = null;
   for (let i = 0; i < 12; i++) {
     try {
-      run(NPM, ['pack', NAME + '@' + ver, '--pack-destination', tmp], { stdio: 'pipe' });
+      execSync('npm pack ' + NAME + '@' + ver + ' --pack-destination "' + tmp + '"',
+        { cwd: ROOT, stdio: 'pipe', encoding: 'utf8' });
       const tgz = fs.readdirSync(tmp).filter(function (f) { return f.endsWith('.tgz'); })[0];
       if (tgz) return tgz;
     } catch (e) {
