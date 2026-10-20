@@ -129,7 +129,7 @@ function preflight() {
   if (allowed.length) die('工作区不干净（只允许 CHANGELOG.md 未提交）：\n' + dirty.join('\n'));
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
   if (branch !== 'main') die('当前在 ' + branch + '，发布只允许在 main 上');
-  git('fetch', 'origin', 'main', '--quiet', '2>&1');
+  run('git', ['fetch', 'origin', 'main', '--quiet'], { stdio: ['ignore', 'pipe', 'ignore'] });
   if (git('rev-parse', 'HEAD') !== git('rev-parse', 'origin/main')) {
     die('本地 main 与 origin/main 不一致（先 push 或 pull）');
   }
