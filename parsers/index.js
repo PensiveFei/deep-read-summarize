@@ -54,9 +54,17 @@ class ParserRegistry {
     }
   }
 
-  /** 按类型解析解析器；未知类型回退到 web */
+  /**
+   * 按类型解析解析器；未知类型回退到 web。
+   *
+   * 必须走 hasOwnProperty：直接 `this.parsers[type]` 会把原型链上的键也当成解析器
+   * 返回 —— `resolve("constructor")` 拿到的是 Object 构造函数、`resolve("toString")`
+   * 拿到 toString，两者都没有 buildPrompt，调用方会拿到 TypeError 而不是回退到 web。
+   * 也就是说「未知类型回退 web」这条契约会在十来个名字上静默失效。
+   */
   resolve(type) {
-    return this.parsers[type] || this.parsers.web;
+    if (!Object.prototype.hasOwnProperty.call(this.parsers, type)) return this.parsers.web;
+    return this.parsers[type];
   }
 
   /** 列出所有已注册解析器 */

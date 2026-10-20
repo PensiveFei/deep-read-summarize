@@ -594,3 +594,15 @@ test('release script: --help spells out the preconditions it enforces', () => {
   assert.ok(out.indexOf('CHANGELOG.md') >= 0, 'the help must mention the CHANGELOG precondition');
   assert.ok(out.indexOf('--yes') >= 0, 'the help must mention how to actually run it');
 });
+
+test('parsers: resolve() falls back to web for names that live on the prototype chain', () => {
+  // 裸取 this.parsers[name] 会把 Object.prototype 上的成员当成解析器返回，
+  // 而它们都没有 buildPrompt，调用方拿到的是 TypeError 而不是回退。
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+    const p = parsers.resolve(name);
+    assert.ok(p && typeof p.buildPrompt === 'function',
+      'resolve(' + JSON.stringify(name) + ') must fall back to a real parser');
+    assert.strictEqual(p.name, 'web',
+      'resolve(' + JSON.stringify(name) + ') must fall back to web');
+  }
+});
