@@ -137,7 +137,8 @@ npm view deep-read-summarize --prefer-online                         # 验证线
 | v0.3.14 | npm 已发布 | 修：路径尾分隔符、本地日期、config 白名单；README 测试数 |
 | v0.3.15 | npm 已发布 | 工程卫生：锁定 LF、脚本正文独立成文、lint 扩检查、包瘦身、提示词改「标准 Markdown」 |
 | v0.3.16 | npm 已发布 | 新增 `options.frontmatter` 三档（obsidian / generic / minimal），解决 Hugo 保留键冲突；默认档不变 |
-| **v0.3.17** | **仅 GitHub（npm 待补）** | 修 `resolve()` 原型链回退与质量清单 required；新增发布脚本 `scripts/release.js` |
+| v0.3.17 | npm 已发布 | 修 `resolve()` 原型链回退与质量清单 required；新增发布脚本 `scripts/release.js` |
+| **v0.3.18** | **npm 已发布（当前）** | 修复自动解析器分流、并发临时文件串稿和分块上限导致的全文遗漏 |
 | v1.0.0 | 计划 | API 稳定后发布 |
 
 > 早期迭代用 0.x 表达不稳定；API 稳定后再发 1.0.0。
