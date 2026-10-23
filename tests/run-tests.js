@@ -160,7 +160,8 @@ function extractSchemaLiterals(text) {
       if (text[i] === '{') depth += 1;
       else if (text[i] === '}') { depth -= 1; if (depth === 0) break; }
     }
-    out.push({ name: m[1], value: eval('(' + text.slice(from, i + 1) + ')') }); // eslint-disable-line no-eval
+    const readSchema = new Function('parserNames', 'return (' + text.slice(from, i + 1) + ');');
+    out.push({ name: m[1], value: readSchema(Object.keys(workflow.parsers.registry.parsers)) });
   }
   return out;
 }

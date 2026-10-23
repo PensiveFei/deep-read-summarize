@@ -152,15 +152,15 @@ function venvEnvAttempts(baseEnv, mirror) {
 /**
  * 判定转写产物是否可用。
  * 0 字节 = VAD 把整段音频滤掉了（纯静音 / 纯 BGM）或解码失败。此时**不能算成功**：
- * 调用方按「输出文件非空且稳定」判断完成，而提示词里还有一条「日志出现 DONE」——
- * 两者叠加会让空逐字稿被当成转写成功，再拿去做精读。所以删掉空文件并以非 0 退出（code 3）。
+ * 只有本次进程退出码为 0 且发布了非空输出才算完成；空产物保留在本次暂存目录，
+ * 清理后以非 0 退出（code 3），不会发布到调用方读取的最终路径。
  */
 function judgeTranscript(bytes) {
   if (bytes > 0) return { ok: true, code: 0, message: '' };
   return {
     ok: false,
     code: 3,
-    message: '转写结果为空（0 字节）：音频可能是纯静音 / 纯音乐，或解码失败。已删除空输出文件，请按降级处理（让用户提供文案，或用 options.transcribe=false）。'
+    message: '转写结果为空（0 字节）：音频可能是纯静音 / 纯音乐，或解码失败。未发布空输出文件，请按降级处理（让用户提供文案，或用 options.transcribe=false）。'
   };
 }
 
@@ -223,11 +223,10 @@ const PY_RUNNER = [
   "    print('[transcribe] device=%s failed (%s); retrying on cpu' % (device, exc), file=sys.stderr)",
   "    segments, info = run('cpu')",
   "",
-  "# 先把全部分段收集完再落盘：中途失败时不会留下半截 transcript.txt",
-  "# （调用方按「文件非空且稳定」判断完成，半截文件会被误判成成功）。",
+  "# DRS_OUT 是本次调用独有的暂存路径；Node 校验后才原子发布到最终路径。",
+  "# 先收集全部分段再落盘，中途推理失败不会留下半截文本。",
   "with open(os.environ['DRS_OUT'], 'w', encoding='utf-8') as f:",
   "    f.write(' '.join([x for x in segments if x]))",
-  "print('DONE', info.language, round(info.duration, 1))",
   ""
 ].join("\n");
 
@@ -284,16 +283,29 @@ function main(argv) {
     process.stderr.write(USAGE + '\n');
     return fail('--audio 与 --out 都是必填的。');
   }
-  if (!fs.existsSync(args.audio)) return fail('音频文件不存在：' + args.audio);
-  if (!isFileAt(args.audio)) return fail('--audio 不是文件（是不是给了目录？）：' + args.audio);
-  if (uv === null) {
-    return fail('没有找到 uv。请先安装：' + uvInstallHint(c) + '（装好后重跑本脚本；或改用 options.transcribe=false / 手动提供转写文本降级）');
-  }
-
+  const outputPath = path.resolve(args.out);
+  let stagingDir = null;
   try {
+    // 清理旧结果前先保护输入，避免 --audio 与 --out 指向同一文件。
+    if (path.resolve(args.audio) === outputPath ||
+        (fs.existsSync(args.audio) && fs.existsSync(outputPath) &&
+         fs.realpathSync(args.audio) === fs.realpathSync(outputPath))) {
+      return fail('--audio 与 --out 不能指向同一文件。');
+    }
+    // 从本次调用开始就不允许旧逐字稿继续充当“已完成”的产物。
+    fs.rmSync(outputPath, { force: true });
+    if (!fs.existsSync(args.audio)) return fail('音频文件不存在：' + args.audio);
+    if (!isFileAt(args.audio)) return fail('--audio 不是文件（是不是给了目录？）：' + args.audio);
+    if (uv === null) {
+      return fail('没有找到 uv。请先安装：' + uvInstallHint(c) + '（装好后重跑本脚本；或改用 options.transcribe=false / 手动提供转写文本降级）');
+    }
+
     fs.mkdirSync(root, { recursive: true });
     // 输出目录可能在别处（如 ./.tmp），提前建好，免得 python 侧报一句难懂的错
-    fs.mkdirSync(path.dirname(path.resolve(args.out)), { recursive: true });
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    // 与最终文件处于同一文件系统，rename 才能原子发布；每次调用独占暂存目录。
+    stagingDir = fs.mkdtempSync(path.join(path.dirname(outputPath), '.drs-transcribe-'));
+    const stagingOutput = path.join(stagingDir, 'transcript.txt');
 
     const childEnv = Object.assign({}, process.env);
 
@@ -330,28 +342,33 @@ function main(argv) {
     childEnv.HF_HUB_DISABLE_XET = '1';
     childEnv.HF_HUB_DISABLE_SYMLINKS_WARNING = '1';
     childEnv.DRS_AUDIO = args.audio;
-    childEnv.DRS_OUT = args.out;
+    childEnv.DRS_OUT = stagingOutput;
     childEnv.DRS_MODEL = args.model;
     childEnv.DRS_LANG = args.language;
     childEnv.DRS_DEVICE = args.device;
 
-    const pyScript = path.join(root, 'transcribe_run.py');
+    const pyScript = path.join(stagingDir, 'transcribe_run.py');
     fs.writeFileSync(pyScript, PY_RUNNER, 'utf8');
 
     // 4) 转写（首次会下载模型到 HF_HOME，之后缓存复用）
     runStep(py, [pyScript], childEnv, '转写');
 
-    const bytes = fs.statSync(args.out).size;
-    process.stdout.write('TRANSCRIBED ' + bytes + ' bytes to ' + args.out + '\n');
+    const bytes = fs.statSync(stagingOutput).size;
     const verdict = judgeTranscript(bytes);
     if (!verdict.ok) {
-      // 删掉空文件：留着它会让「文件存在」被当成完成
-      try { fs.rmSync(args.out, { force: true }); } catch (e) { /* 删不掉也要如实报错 */ }
       return fail(verdict.message, verdict.code);
     }
+    fs.renameSync(stagingOutput, outputPath);
+    process.stdout.write('TRANSCRIBED ' + bytes + ' bytes to ' + args.out + '\n');
+    process.stdout.write('DONE\n');
     return 0;
   } catch (e) {
     return fail(e.message + '（可降级：让用户手动提供转写文本，或用 options.transcribe=false 跳过转写）');
+  } finally {
+    if (stagingDir) {
+      try { fs.rmSync(stagingDir, { recursive: true, force: true }); }
+      catch (e) { process.stderr.write('[transcribe] 暂存目录清理失败：' + stagingDir + '（' + e.message + '）\n'); }
+    }
   }
 }
 

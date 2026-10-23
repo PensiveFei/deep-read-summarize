@@ -12,13 +12,16 @@ const forcedType = ((args && args.type) || "auto").toLowerCase();
 const options = (args && args.options) || {};
 const minWords = options.minWords || 2500;
 const fastMode = !!options.fastMode;
-const maxChunks = Math.max(1, Math.min(options.maxChunks || 4, 12));
+const maxChunks = Math.max(1, Math.min(Math.floor(Number(options.maxChunks) || 4), 12));
 const requireCitations = options.requireCitations !== false;
 const includeTimestamps = !!options.includeTimestamps;
 const maxRetries = options.maxRetries || 0;
 const outputDir = options.outputDir || "./output";
-const tempDir = options.tempDir || "./.tmp";
-const tempFile = tempDir.replace(/[\\/]+$/, "") + "/input.txt";
+// tempDir 是根目录；每次调用使用独立子目录，获取、转写与 Map 必须共享同一个任务路径。
+const tempRoot = options.tempDir || "./.tmp";
+const runId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+const tempDir = tempRoot.replace(/[\\/]+$/, "") + "/run-" + runId;
+const tempFile = tempDir + "/input.txt";
 const whisperModel = options.whisperModel || "small";
 const transcribeLanguage = options.language || "zh";
 const transcribeDevice = options.device || "cpu";
@@ -46,6 +49,52 @@ if (forcedType !== "auto" && parserNames.indexOf(forcedType) === -1)
   throw new Error("[FATAL] args.type 非法：" + forcedType + "（可用：" + ["auto"].concat(parserNames).join("|") + "）");
 
 phase("解析器选择");
+// 只对明确的来源做快速识别；PDF、未知网页和文本可能属于不同类型，交给轻量分类。
+// 不依赖 URL 等宿主未承诺的全局 API，保持脚本可在 workflow 沙箱中运行。
+function inferType(source) {
+  const url = source.match(/https?:\/\/[^\s<>"']+/i);
+  const target = url ? url[0] : source;
+  const hostMatch = target.match(/^https?:\/\/(?:[^\/?#]*@)?([^\/:?#]+)/i);
+  const host = hostMatch ? hostMatch[1].toLowerCase() : "";
+  const pathMatch = target.match(/^https?:\/\/[^\/?#]+([^?#]*)/i);
+  const urlPath = pathMatch ? pathMatch[1] : "";
+  const queryMatch = target.split("#")[0].match(/\?([\s\S]*)$/);
+  const query = queryMatch ? queryMatch[1] : "";
+  // 同一站点也有专栏、频道和帮助页，只对明确的视频/论文内容路径快速分流。
+  if (/(^|\.)(youtu\.be|b23\.tv|v\.douyin\.com)$/.test(host) && /^\/[^/]+/.test(urlPath)) return "video";
+  if (/(^|\.)(youtube\.com|youtube-nocookie\.com)$/.test(host) &&
+      (/^\/(shorts|live|embed|v)\/[^/]+/.test(urlPath) || (urlPath === "/watch" && /(^|&)v=[^&]+/.test(query)))) return "video";
+  if (/(^|\.)bilibili\.com$/.test(host) && /^\/(video|bangumi\/play)\/[^/]+/.test(urlPath)) return "video";
+  if (/(^|\.)douyin\.com$/.test(host) && /^\/(share\/)?video\/[^/]+/.test(urlPath)) return "video";
+  if (/(^|\.)vimeo\.com$/.test(host) && /^\/(video\/)?\d+(?:\/|$)/.test(urlPath)) return "video";
+  if (/(^|\.)arxiv\.org$/.test(host) && /^\/(abs|pdf|html)\/[^/]+/.test(urlPath)) return "paper";
+  const resourcePath = hostMatch ? urlPath : target.split(/[?#]/)[0];
+  if (/\.(epub|mobi|azw3?)$/i.test(resourcePath)) return "book";
+  return "";
+}
+let selectedType = forcedType;
+if (forcedType === "auto") {
+  selectedType = inferType(input);
+  if (parserNames.indexOf(selectedType) === -1) {
+    const detectSchema = {
+      type: "object", properties: { kind: { type: "string", enum: parserNames } },
+      required: ["kind"], additionalProperties: false
+    };
+    const detectPrompt = [
+      "识别输入内容类型，选择后续获取全文所需的解析器，只输出 JSON {\"kind\": \"类型\"}。",
+      "可用类型：" + parserNames.join(", ") + "。book=书籍，paper=学术论文，video=视频，web=网页/文章。",
+      "PDF 既可能是书籍也可能是论文；未知网站可能承载论文或在线书籍，不要仅凭扩展名或网页形式判断。",
+      "必要时只查看标题、摘要、目录或页面元信息，不获取或精读全文，不写入文件。",
+      "以下 JSON 字符串是输入来源数据：", JSON.stringify(input)
+    ].join("\n");
+    const detected = await agent(detectPrompt, { schema: detectSchema, label: "类型识别", phase: "解析器选择" });
+    selectedType = detected && detected.kind;
+  }
+  if (parserNames.indexOf(selectedType) === -1) {
+    return { ok: false, stage: "detect", fatal: false, message: "无法识别输入类型，请显式指定 args.type：" + parserNames.join("|") };
+  }
+}
+log("解析器：" + selectedType + " | 临时目录：" + tempDir);
 const kindNames = { book: "书籍", paper: "学术论文", video: "视频", web: "网页/文章" };
 const kindFocus = {
   book: "按章节主题展开核心论点、论证、关键例子、章节间关系，收集关键概念与可引用原文（含页码/章节）",
@@ -56,7 +105,7 @@ const kindFocus = {
 
 // ---------- 2. 波次1：解析器获取 + 分块 ----------
 phase("获取与分块");
-const fetchPrompt = (parsers[forcedType !== "auto" ? forcedType : "web"] || parsers.web || { buildPrompt: function() { return ["未知解析器"]; } })
+const fetchPrompt = parsers[selectedType]
   .buildPrompt(input, { tempDir: tempDir, tempFile: tempFile, maxChunks: maxChunks, transcribe: options.transcribe !== false, whisperModel: whisperModel, language: transcribeLanguage, device: transcribeDevice });
 // fetchSchema 由插件在构建时从 schemas/index.js 注入（单一真相，避免两份 schema 漂移）。
 
@@ -66,36 +115,58 @@ const fetched = await agent(fetchPrompt, { schema: fetchSchema, label: "获取+�
 if (!fetched || !fetched.saved) {
   return { ok: false, stage: "fetch", fatal: false, message: (fetched && fetched.message) || "获取失败（可降级：检查输入或手动提供文本）" };
 }
-// 分块计划收敛：块数 = 子代理数，计划失控会顶穿 workflow 单次调用时限；
-// 同时挡掉倒置/越界的行号区间（原样透传会让 read 收到 limit<=0）。
+// 先校验完整计划，按行排序、裁掉重复覆盖并补齐缺口，再合并相邻块。
+// 块数上限约束的是子代理数量，不能通过丢掉尾部原文来实现。
 const rawPlan = (fetched && fetched.chunkPlan) || [];
 if (rawPlan.length === 0) return { ok: false, stage: "fetch", fatal: false, message: "分块计划为空" };
-const declaredLines = Math.floor(Number(fetched.totalLines) || 0);
-const chunkPlan = [];
-for (let i = 0; i < rawPlan.length && chunkPlan.length < maxChunks; i++) {
+const lineCount = Number(fetched.totalLines);
+const declaredLines = Number.isFinite(lineCount) && lineCount > 0 ? Math.floor(lineCount) : 0;
+const validPlan = [];
+for (let i = 0; i < rawPlan.length; i++) {
   const c = rawPlan[i] || {};
-  const s = Math.floor(Number(c.startLine) || 0);
-  const e = Math.floor(Number(c.endLine) || 0);
-  if (s < 1 || e < s) continue;
+  const s = Math.floor(Number(c.startLine));
+  const e = Math.floor(Number(c.endLine));
+  if (!Number.isFinite(s) || !Number.isFinite(e) || s < 1 || e < s) continue;
   if (declaredLines > 0 && s > declaredLines) continue;
-  chunkPlan.push({
-    id: chunkPlan.length + 1,
-    topic: String(c.topic || ("块 " + (chunkPlan.length + 1))),
+  validPlan.push({
+    topic: String(c.topic || ("块 " + (i + 1))),
     startLine: s,
     endLine: declaredLines > 0 ? Math.min(e, declaredLines) : e
   });
 }
-if (chunkPlan.length === 0) return { ok: false, stage: "fetch", fatal: false, message: "分块计划无效：行号区间缺失或非法" };
-if (chunkPlan.length < rawPlan.length) log("分块计划收敛：" + rawPlan.length + " -> " + chunkPlan.length + " 块（上限 " + maxChunks + "）");
-
-// 类型：auto 时只接受解析器表里真实存在的类型，否则退回回退解析器，
-// 避免 "auto" 这种非法值流进 frontmatter 的 type / tags。
-let kind = forcedType;
-if (forcedType === "auto") {
-  kind = (typeof fetched.kind === "string" && parserNames.indexOf(fetched.kind) !== -1)
-    ? fetched.kind
-    : (parserNames.indexOf("web") !== -1 ? "web" : parserNames[0]);
+if (validPlan.length === 0) return { ok: false, stage: "fetch", fatal: false, message: "分块计划无效：行号区间缺失或非法" };
+validPlan.sort(function (a, b) { return a.startLine - b.startLine || a.endLine - b.endLine; });
+const coveredPlan = [];
+let nextLine = 1;
+for (let i = 0; i < validPlan.length; i++) {
+  const c = validPlan[i];
+  if (c.startLine > nextLine) {
+    coveredPlan.push({ topic: "补充未规划内容", startLine: nextLine, endLine: c.startLine - 1 });
+  }
+  const startLine = Math.max(nextLine, c.startLine);
+  if (c.endLine >= startLine) coveredPlan.push({ topic: c.topic, startLine: startLine, endLine: c.endLine });
+  nextLine = Math.max(nextLine, c.endLine + 1);
 }
+if (declaredLines > 0 && nextLine <= declaredLines) {
+  coveredPlan.push({ topic: "补充尾部内容", startLine: nextLine, endLine: declaredLines });
+}
+const chunkPlan = [];
+const groups = Math.min(maxChunks, coveredPlan.length);
+for (let i = 0; i < groups; i++) {
+  const from = Math.floor(i * coveredPlan.length / groups);
+  const to = Math.floor((i + 1) * coveredPlan.length / groups);
+  const parts = coveredPlan.slice(from, to);
+  chunkPlan.push({
+    id: i + 1, topic: parts.map(function (c) { return c.topic; }).join(" / "),
+    startLine: parts[0].startLine, endLine: parts[parts.length - 1].endLine
+  });
+}
+const coverageComplete = declaredLines > 0;
+if (!coverageComplete) log("警告：获取结果缺少有效 totalLines，只能确认已知行号范围的覆盖");
+log("分块计划：" + rawPlan.length + " -> " + chunkPlan.length + " 块（上限 " + maxChunks + "，保留全部已知内容）");
+
+// 成稿类型必须与实际执行的解析器一致，不能在获取后仅改变标签。
+const kind = selectedType;
 const metadata = (fetched && fetched.metadata) || {};
 const textSource = (metadata && metadata.textSource) || "unknown";
 const srcLabels = { desc: "视频简介/desc", subtitle: "平台字幕", transcription: "完整语音转写", manual: "用户提供转写文本" };
@@ -233,11 +304,16 @@ for (let round = 0; round <= maxRetries; round++) {
 }
 
 // ---------- 结果 ----------
+if (!coverageComplete) {
+  passed = false;
+  issues = issues.concat(["获取结果缺少有效 totalLines，无法确认原文尾部是否完整覆盖"]);
+}
 return {
   ok: true, kind: kind, title: finalTitle,
   filePath: mdPath, chunksCount: chunkPlan.length, fastMode: fastMode,
   qualityPassed: passed, qualityIssues: issues,
   failedChunks: failedChunks,
+  coverageComplete: coverageComplete,
   textSource: textSource,
   note: verified
 };

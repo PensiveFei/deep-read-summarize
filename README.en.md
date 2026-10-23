@@ -68,7 +68,11 @@ Wave 3  Merge draft + quality check (Reduce)
 Markdown note
 ```
 
-Three waves, roughly N+2 sub-agents in total, where N is the number of chunks.
+Three waves, normally N+3 sub-agent calls (fetch, N chunk reads, draft, and quality check). In `auto` mode, ambiguous PDFs, unfamiliar web pages, and text inputs require one additional lightweight classification call. An explicit `type` skips classification.
+
+`auto` routes recognized video links, arXiv paper links, and ebook extensions directly to their parsers; columns, channels, and help pages on those sites still require classification. PDFs are classified as books or papers from their content. Failed classification returns `stage: "detect"` and asks for an explicit type. `options.tempDir` is a temporary root: each call creates its own `run-*` subdirectory, keeping fetched text, audio, and transcripts separate from other tasks.
+
+Chunk plans are sorted, duplicate ranges trimmed, and gaps filled. Plans above `maxChunks` merge adjacent ranges instead of discarding the document tail. The returned `coverageComplete` indicates coverage of all declared lines based on a valid `totalLines`; without a line count, known ranges are retained, `qualityPassed` is set to `false`, and the coverage uncertainty is reported.
 
 ```
 parsers/         Parsers for each input type, dispatched by type

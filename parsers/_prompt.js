@@ -34,7 +34,7 @@ function buildFetchPrompt(cfg) {
     "目标文件：" + tempFile + "（先创建目录 " + tempDir + "，用 write 工具写入）",
     "步骤："
   ].concat(steps, [
-    (steps.length + 1) + ". 分块：按" + cfg.chunkRule + "切分，每块约 100-200 行或 4000-6000 字，块数不超过 " + maxChunks + " 块；每块给 id/topic/startLine/endLine。",
+    (steps.length + 1) + ". 分块：按" + cfg.chunkRule + "切分，每块约 100-200 行或 4000-6000 字，块数不超过 " + maxChunks + " 块；每块给 id/topic/startLine/endLine。必须完整覆盖第 1 行到 totalLines，不遗漏开头、块间或尾部内容；超过块数上限时合并相邻块，不要截断原文。",
     "输出 JSON：",
     cfg.jsonExample,
     "若无法获取文本输出 { \"saved\": false, \"message\": \"原因\" }。只输出 JSON。"

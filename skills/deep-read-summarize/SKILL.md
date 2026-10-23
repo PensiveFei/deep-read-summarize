@@ -36,8 +36,8 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 
 1. **配置校验**：缺 input 或 type 非法 → 报 FATAL 终止
 2. **幂等检查（由你执行，脚本不做）**：脚本在沙箱内没有文件系统，写不了指纹记录。落盘前先看目标 `filePath` 是否已有同名笔记——已存在就问用户是覆盖还是跳过，别默默重跑一遍烧 token。（要在程序里做去重，可用插件导出的 `lib/cache.js`：fingerprint / hasProcessed / markProcessed。）
-3. **解析器选择**：按类型从 parsers 注册表选解析器（book/paper/video/web）
-4. **波次1 获取+分块**：解析器获取全文 → 写入临时文件 → 生成分块计划（JSON Schema 校验）
+3. **解析器选择**：按类型从 parsers 注册表选解析器（book/paper/video/web）。`auto` 对明确视频链接、arXiv 论文链接、电子书扩展名直接分流；同站的图文/频道/帮助页、PDF/未知网页/文本等模糊输入先轻量识别，不能固定当作网页。识别失败返回 `stage: "detect"`，再请用户显式指定类型
+4. **波次1 获取+分块**：解析器获取全文 → 写入本次独立的临时子目录 → 生成分块计划（JSON Schema 校验）。`tempDir` 是根目录，不要复用其他 `run-*` 任务的 input/audio/transcript；分块超过上限时合并相邻区间，保持从第 1 行到 totalLines 的完整覆盖
 5. **波次2 并行精读**：每个分块一个子代理深度精读（Map）
 6. **波次3 合并成稿**：整合为完整笔记（Reduce），内嵌质量自检
 7. **质量校验**：可选重试（maxRetries），检查覆盖度/引用真实性/术语一致/格式完整/篇幅/语言
@@ -46,7 +46,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 
 ## 输出
 
-workflow 返回 `{ ok, filePath, note, qualityPassed, qualityIssues, failedChunks, textSource }`。
+workflow 返回 `{ ok, filePath, note, qualityPassed, qualityIssues, failedChunks, coverageComplete, textSource }`。`coverageComplete: false` 表示获取结果缺少有效总行数，无法确认尾部覆盖；此时质量状态也会降级，必须向用户说明。
 
 > ⚠️ **`note` 就是完整笔记正文，`filePath` 只是建议路径**：脚本运行在无文件系统的沙箱里（DSH 的 workflow 契约：脚本只负责协调子代理），**它不会替你写文件**。必须由你（主代理）在拿到结果后用 `write` 工具把它写到 `filePath`——默认 `./output/`，可用 `options.outputDir` 指向 Obsidian 仓库或静态站点的内容目录。
 

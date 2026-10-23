@@ -92,6 +92,7 @@ function makeAgent(cfg) {
   cfg = cfg || {};
   return function (prompt, o) {
     const label = (o && o.label) || '';
+    if (label === '类型识别') return { kind: cfg.kind || 'web' };
     if (label === '获取+分块') {
       if (cfg.fetch !== undefined) return cfg.fetch;
       return {
@@ -131,11 +132,11 @@ function injectedFetchSchema(scriptText) {
   return JSON.parse(m[1]);
 }
 
-test('workflow: chunk plan is clamped to maxChunks', async () => {
+test('workflow: chunk plan is merged into maxChunks', async () => {
   const plan = [];
   for (let i = 1; i <= 10; i++) plan.push({ id: i, topic: 'T' + i, startLine: (i - 1) * 100 + 1, endLine: i * 100 });
   const r = await runScript({ input: 'x', type: 'paper', options: { maxChunks: 4 } }, makeAgent({ chunkPlan: plan }));
-  assert.strictEqual(r.result.chunksCount, 4, 'the plan must be clamped, not passed through');
+  assert.strictEqual(r.result.chunksCount, 4, 'the plan must be merged, not passed through');
   assert.strictEqual(r.calls.filter(function (c) { return c.label === '精读块'; }).length, 4,
     'one sub-agent per chunk - 10 chunks means 10 sub-agents');
 });
@@ -178,7 +179,7 @@ test('workflow: a title of nothing but illegal characters still yields a usable 
   assert.ok(/未命名内容\.md$/.test(r.result.filePath), r.result.filePath);
 });
 
-test('workflow: unknown kind under type=auto falls back to a registered type', async () => {
+test('workflow: auto retains its selected parser when fetch omits kind', async () => {
   const r = await runScript({ input: 'x', type: 'auto' }, makeAgent({
     fetch: { saved: true, totalLines: 10, chunkPlan: [{ id: 1, topic: 't', startLine: 1, endLine: 10 }] }
   }));
@@ -482,8 +483,8 @@ test('workflow: trailing separators in tempDir normalize into tempFile', async (
     const r = await runScript({ input: 'x', type: 'paper', options: { tempDir: dir } }, makeAgent({}));
     const fetchCall = r.calls.find(function (c) { return c.label === '获取+分块'; });
     assert.ok(fetchCall, 'the fetch phase must run');
-    assert.ok(fetchCall.prompt.indexOf('./.tmp/input.txt') >= 0,
-      'tempDir ' + JSON.stringify(dir) + ' must normalize to ./.tmp/input.txt');
+    assert.ok(/目标文件：\.\/\.tmp\/run-[a-z0-9-]+\/input\.txt（/.test(fetchCall.prompt),
+      'tempDir ' + JSON.stringify(dir) + ' must normalize and retain a unique run subdirectory');
   }
 });
 
