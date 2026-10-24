@@ -30,8 +30,34 @@ const builtins = {
  */
 class ParserRegistry {
   constructor() {
-    this.parsers = { ...builtins };
+    this.parsers = Object.create(null);
+    this._sources = new WeakMap();
+    for (const type of Object.keys(builtins)) this.register(builtins[type], require.resolve('./' + type));
     this._loadCustom();
+  }
+
+  /** Remember the module, not just its function: module factories preserve helpers and closures. */
+  register(mod, filename) {
+    if (!mod || typeof mod.name !== 'string' || !mod.name.trim() || typeof mod.buildPrompt !== 'function') {
+      throw new Error('parser must expose a name and buildPrompt(input, options) function');
+    }
+    const types = mod.types === undefined ? [mod.name] : mod.types;
+    if (!Array.isArray(types) || !types.length || types.some(function (type) { return typeof type !== 'string' || !type.trim(); })) {
+      throw new Error('parser.types must be a non-empty array of type names');
+    }
+    if (filename) this._sources.set(mod, { filename: filename, buildPrompt: mod.buildPrompt });
+    for (const type of types) this.parsers[type] = mod;
+    return mod;
+  }
+
+  sourceFor(mod) {
+    const known = this._sources.get(mod);
+    if (known) return known.buildPrompt === mod.buildPrompt ? known.filename : undefined;
+    // Also preserve modules supplied programmatically through registry.parsers.
+    for (const filename of Object.keys(require.cache)) {
+      if (require.cache[filename].exports === mod) return filename;
+    }
+    return undefined;
   }
 
   _loadCustom() {
@@ -40,12 +66,10 @@ class ParserRegistry {
     for (const file of fs.readdirSync(customDir)) {
       if (!file.endsWith(".js")) continue;
       try {
-        const mod = require(path.join(customDir, file));
+        const filename = path.join(customDir, file);
+        const mod = require(filename);
         if (mod && mod.name && mod.buildPrompt) {
-          // 支持自定义类型名，或覆盖内置类型
-          for (const t of mod.types || [mod.name]) {
-            this.parsers[t] = mod;
-          }
+          this.register(mod, filename);
           console.log("[parsers] loaded custom parser:", mod.name);
         }
       } catch (e) {
@@ -82,5 +106,6 @@ const registry = new ParserRegistry();
 module.exports = {
   resolve: (type) => registry.resolve(type),
   list: () => registry.list(),
-  registry
+  registry,
+  ParserRegistry
 };

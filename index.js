@@ -20,42 +20,10 @@ const path = require('node:path');
 const workflow = require('./workflow');
 const parsers = require('./parsers');
 const schemas = require('./schemas');
+const { DEFAULT_OPTIONS, normalizeWorkflowOptions } = require('./lib/options');
 
 module.exports.name = 'deep-read-summarize';
 module.exports.inject = ['skills'];
-
-/** workflow 的 options 默认值（与 workflow 脚本内的默认值保持一致）。 */
-const DEFAULT_OPTIONS = {
-  minWords: 2500,
-  fastMode: false,
-  maxChunks: 4,
-  transcribe: true,
-  requireCitations: true,
-  includeTimestamps: false,
-  outputDir: './output',
-  tempDir: './.tmp',
-  whisperModel: 'small',
-  language: 'zh',
-  device: 'cpu',
-  maxRetries: 0,
-  frontmatter: 'obsidian'
-};
-
-const OPTION_TYPES = {
-  minWords: 'number',
-  fastMode: 'boolean',
-  maxChunks: 'number',
-  transcribe: 'boolean',
-  requireCitations: 'boolean',
-  includeTimestamps: 'boolean',
-  outputDir: 'string',
-  tempDir: 'string',
-  whisperModel: 'string',
-  language: 'string',
-  device: 'string',
-  maxRetries: 'number',
-  frontmatter: 'string'
-};
 
 /**
  * 归一化插件 config：只认白名单里的键，类型不符就告警并忽略（不抛错，
@@ -63,26 +31,8 @@ const OPTION_TYPES = {
  * 支持 `config: { outputDir: ... }` 与 `config: { options: { outputDir: ... } }` 两种写法。
  */
 function normalizeOptions(config) {
-  const opts = { ...DEFAULT_OPTIONS };
-  const raw = (config && config.options) || config || {};
-  for (const key of Object.keys(DEFAULT_OPTIONS)) {
-    const v = raw[key];
-    if (v === undefined) continue;
-    if (typeof v !== OPTION_TYPES[key]) {
-      console.warn('[deep-read-summarize] ignoring config.' + key + ' — expected ' + OPTION_TYPES[key] + ', got ' + typeof v);
-      continue;
-    }
-    opts[key] = v;
-  }
-  // 未知键此前是完全无声的：循环只遍历白名单，写错的键名既不生效也不告警。
-  const unknown = Object.keys(raw).filter(function (k) {
-    return !Object.prototype.hasOwnProperty.call(DEFAULT_OPTIONS, k);
-  });
-  if (unknown.length) {
-    console.warn('[deep-read-summarize] ignoring unknown config key(s): ' + unknown.join(', '));
-    console.warn('[deep-read-summarize] allowed keys: ' + Object.keys(DEFAULT_OPTIONS).join(', '));
-  }
-  return opts;
+  const raw = config && Object.prototype.hasOwnProperty.call(config, 'options') ? config.options : config;
+  return normalizeWorkflowOptions(raw, { mode: 'config', warn: function (message) { console.warn(message); } });
 }
 
 /** 组装技能内容：SKILL.md + workflow meta/script/args 示例（script 为自包含版本）。 */
@@ -145,3 +95,4 @@ module.exports.schemas = schemas;
 module.exports.buildSkillContent = buildSkillContent;
 module.exports.DEFAULT_OPTIONS = DEFAULT_OPTIONS;
 module.exports.normalizeOptions = normalizeOptions;
+module.exports.normalizeWorkflowOptions = normalizeWorkflowOptions;

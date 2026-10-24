@@ -74,6 +74,10 @@ Three waves, normally N+3 sub-agent calls (fetch, N chunk reads, draft, and qual
 
 Chunk plans are sorted, duplicate ranges trimmed, and gaps filled. Plans above `maxChunks` merge adjacent ranges instead of discarding the document tail. The returned `coverageComplete` indicates coverage of all declared lines based on a valid `totalLines`; without a line count, known ranges are retained, `qualityPassed` is set to `false`, and the coverage uncertainty is reported.
 
+Quality checks combine code and source review. Code validates the supplied scalar/list frontmatter template, required sections, and length (CJK characters plus other words, excluding metadata, code blocks, HTML comments, and link URLs). A separate reviewer reads the current source file and returns per-chunk excerpts and line-bound evidence for verbatim quotations in section 4. A bare `pass: true` cannot override these checks. `qualityChecks` exposes the gates, and `qualityEvidence` exposes the source path and evidence. Source authenticity still depends on the reviewer's actual source reading; uncertainty fails the gate. Empty, rejected, or structurally degraded repairs retain the preceding usable note.
+
+Direct workflow options are strict: `minWords` is an integer in 1–100000, `maxChunks` is a positive integer (values above 12 are capped), and `maxRetries` is an integer in 0–3. Invalid values and unknown keys fail before work begins. Plugin profile configuration instead warns per invalid field and uses its default, preserving host startup.
+
 ```
 parsers/         Parsers for each input type, dispatched by type
   book.js        Books: PDF/EPUB/MOBI text extraction, chapter chunking
@@ -94,6 +98,8 @@ workflow.js      the workflow meta and assembly logic (parser inlining, schema i
 > The script body lives in `lib/workflow-script.txt` on purpose: this file was corrupted twice by "escaping on top of escaping". It is plain text now, so reading and editing it needs no encoding step.
 
 To change how an input type is handled, drop a parser with the same interface into `custom-parsers/`; a type with the same name overrides the built-in implementation, and you can also add a brand-new type name (e.g. `podcast`) - every registered parser is inlined into the workflow script, and both the `type` whitelist and the schema's `kind` enum follow the registry. The interface has only three fields: `name`, `types`, `buildPrompt(input, opts)`.
+
+File parsers bundle their CommonJS modules and literal relative `.js`, `.cjs`, and `.json` dependencies, preserving module constants, helpers, method shorthand, and cycles. Acorn parses JavaScript during script construction and is installed automatically by npm; it does not run in the workflow sandbox. Node built-ins, external packages, and dynamic `require`/`import` are unsupported in sandbox parsers and fail at build time. Programmatically registered functions must be self-contained; use a file parser for module closures.
 
 ---
 
@@ -119,7 +125,7 @@ Further notes:
 deep-read-summarize is a DSH plugin installable via npm or locally:
 
 ```bash
-# npm install (published to the registry, no third-party dependencies)
+# npm install (includes Acorn for parser construction)
 npm install deep-read-summarize
 
 # or local install (dsh profile directory)
@@ -146,7 +152,7 @@ npm install deep-read-summarize
 # Option B: develop from source
 git clone https://github.com/<your-org>/deep-read-summarize.git
 cd deep-read-summarize
-npm install        # no third-party dependencies, just initialization
+npm ci             # install locked dependencies
 ```
 
 ### 2. Verify the environment (offline, no API key needed)
@@ -155,7 +161,7 @@ npm install        # no third-party dependencies, just initialization
 npm test           # 35 fixture tests, all run offline
 ```
 
-Seeing `TOTAL: 25 passed, 0 failed` means the environment is ready.
+Seeing `TOTAL: 35 passed, 0 failed` means the environment is ready.
 
 ### 3. Feed a demo file with one command
 
@@ -222,7 +228,7 @@ Notes are written to `options.outputDir` (default `./output`, can point at your 
 
 ### Frontmatter profiles (`options.frontmatter`)
 
-The default is `obsidian`, byte-for-byte what earlier versions produced. Profiles exist because `type`, `aliases` and `url` are **reserved keys in Hugo** with different meanings -- dropping an Obsidian note into Hugo changes how the page renders, rather than adding a few harmless fields.
+The default is `obsidian`, with the same keys as earlier versions and safely quoted scalar/list values. Profiles exist because `type`, `aliases` and `url` are **reserved keys in Hugo** with different meanings -- dropping an Obsidian note into Hugo changes how the page renders, rather than adding a few harmless fields.
 
 | Key | `obsidian` (default) | `generic` | `minimal` |
 |---|---|---|---|
@@ -313,7 +319,7 @@ Two classes:
 
 ## Cost
 
-A paper, 6 chunks, full mode: roughly 15–25k tokens. `fastMode` with a lower `maxChunks` saves about 40%.
+Token use depends on document length, chunk count, and output size. Source review reads the document again, and each repair round adds a repair and a review call. `fastMode` reduces output sections; reducing `maxChunks` limits agent count while preserving the complete source.
 
 ---
 

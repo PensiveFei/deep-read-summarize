@@ -7,25 +7,27 @@
 function yamlStr(v) { return JSON.stringify(v == null ? "" : String(v)); }
 
 // ---------- 0. 配置校验（fatal 级错误：必须终止） ----------
+if (args && args.input !== undefined && typeof args.input !== "string") throw new Error("[FATAL] args.input 必须是字符串");
+if (args && args.type !== undefined && typeof args.type !== "string") throw new Error("[FATAL] args.type 必须是字符串");
 const input = (args && args.input || "").trim();
 const forcedType = ((args && args.type) || "auto").toLowerCase();
-const options = (args && args.options) || {};
-const minWords = options.minWords || 2500;
-const fastMode = !!options.fastMode;
-const maxChunks = Math.max(1, Math.min(Math.floor(Number(options.maxChunks) || 4), 12));
-const requireCitations = options.requireCitations !== false;
-const includeTimestamps = !!options.includeTimestamps;
-const maxRetries = options.maxRetries || 0;
-const outputDir = options.outputDir || "./output";
+const options = normalizeWorkflowOptions(args && args.options);
+const minWords = options.minWords;
+const fastMode = options.fastMode;
+const maxChunks = options.maxChunks;
+const requireCitations = options.requireCitations;
+const includeTimestamps = options.includeTimestamps;
+const maxRetries = options.maxRetries;
+const outputDir = options.outputDir;
 // tempDir 是根目录；每次调用使用独立子目录，获取、转写与 Map 必须共享同一个任务路径。
-const tempRoot = options.tempDir || "./.tmp";
+const tempRoot = options.tempDir;
 const runId = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 const tempDir = tempRoot.replace(/[\\/]+$/, "") + "/run-" + runId;
 const tempFile = tempDir + "/input.txt";
-const whisperModel = options.whisperModel || "small";
-const transcribeLanguage = options.language || "zh";
-const transcribeDevice = options.device || "cpu";
-// frontmatter 档位。默认 obsidian = 历史行为，逐字不变（现有用户的 Dataview 查询依赖 type / status）。
+const whisperModel = options.whisperModel;
+const transcribeLanguage = options.language;
+const transcribeDevice = options.device;
+// frontmatter 档位。默认 obsidian 保留历史字段（现有用户的 Dataview 查询依赖 type / status）。
 // generic 档换掉三个「Hugo 保留键」：type -> docType、url -> sourceUrl、created -> date（date 才是标准键）；
 // minimal 档只留 title / date / sourceUrl / tags。
 const FM_PROFILES = ["obsidian", "generic", "minimal"];
@@ -106,7 +108,7 @@ const kindFocus = {
 // ---------- 2. 波次1：解析器获取 + 分块 ----------
 phase("获取与分块");
 const fetchPrompt = parsers[selectedType]
-  .buildPrompt(input, { tempDir: tempDir, tempFile: tempFile, maxChunks: maxChunks, transcribe: options.transcribe !== false, whisperModel: whisperModel, language: transcribeLanguage, device: transcribeDevice });
+  .buildPrompt(input, { tempDir: tempDir, tempFile: tempFile, maxChunks: maxChunks, transcribe: options.transcribe, whisperModel: whisperModel, language: transcribeLanguage, device: transcribeDevice, includeTimestamps: includeTimestamps });
 // fetchSchema 由插件在构建时从 schemas/index.js 注入（单一真相，避免两份 schema 漂移）。
 
 const fetched = await agent(fetchPrompt, { schema: fetchSchema, label: "获取+分块", phase: "获取与分块" });
@@ -186,6 +188,7 @@ const chunkPrompts = chunkPlan.map(function (c) {
     "### 要点（详细展开，保留数据/例子/论证）",
     "### 关键概念（术语+解释）",
     "### 关键引用（最多2句原文+位置）" + (requireCitations ? "，必须标注页码/章节/段落位置" : ""),
+    "引用保留原话并附本文件的真实行号；视频时间戳只能从已保存字幕/转写的时间标记读取，缺失时注明无法定位，不得推测。",
     "### 批判观察（如有）"
   ].join("\n");
 });
@@ -195,11 +198,20 @@ const readBatch = 3;
 for (let bi = 0; bi < chunkPrompts.length; bi += readBatch) {
   const batch = chunkPrompts.slice(bi, bi + readBatch);
   const batchReads = await parallel(batch.map(function (p) {
-    return function () { return agent(p, { label: "精读块", phase: "并行精读" }); };
+    return async function () {
+      try { return await agent(p, { label: "精读块", phase: "并行精读" }); }
+      catch (error) { log("精读调用失败，保留对应分块缺口"); return ""; }
+    };
   }));
   for (let k = 0; k < batchReads.length; k++) reads.push(batchReads[k]);
 }
-const validReads = reads.filter(function (r) { return r && r.trim && r.trim().length > 0; });
+const validReads = reads.filter(function (r) { return typeof r === "string" && r.trim().length > 0; });
+const readEvidence = chunkPlan.map(function (chunk, i) {
+  return { chunkId: chunk.id, topic: chunk.topic, startLine: chunk.startLine, endLine: chunk.endLine,
+    readSucceeded: typeof reads[i] === "string" && reads[i].trim().length > 0,
+    notes: typeof reads[i] === "string" ? reads[i] : "" };
+});
+const failedChunkIds = readEvidence.filter(function (r) { return !r.readSucceeded; }).map(function (r) { return r.chunkId; });
 
 // 失败纪律：某块精读失败 = 可降级（跳过该块，标记缺口继续）
 const failedChunks = chunkPlan.length - validReads.length;
@@ -223,7 +235,7 @@ const extraSections = fastMode ? [] : [
   "## 7. 延伸阅读（相关主题/作者其他作品/参考文献）", ""
 ];
 
-// frontmatter 按档位组装。obsidian 档与历史版本逐字一致，不动既有用户的 Dataview 查询。
+// frontmatter 按档位组装。obsidian 档保留历史键名，字符串安全转义。
 const fm = ["---"];
 if (fmProfile === "obsidian") {
   fm.push('title: ' + yamlStr("《" + finalTitle + "》深度精读笔记"));
@@ -232,7 +244,7 @@ if (fmProfile === "obsidian") {
   fm.push("year: " + yamlStr(metadata.year));
   fm.push("type: " + yamlStr(kind));
   fm.push("url: " + yamlStr(metadata.url || input));
-  fm.push("tags: [精读, " + (kindNames[kind] || kind) + "]");
+  fm.push("tags: [" + yamlStr("精读") + ", " + yamlStr(kindNames[kind] || kind) + "]");
   fm.push("created: " + today);
   fm.push("status: 已完成");
 } else if (fmProfile === "generic") {
@@ -242,13 +254,13 @@ if (fmProfile === "obsidian") {
   fm.push("year: " + yamlStr(metadata.year));
   fm.push("docType: " + yamlStr(kind));
   fm.push("sourceUrl: " + yamlStr(metadata.url || input));
-  fm.push("tags: [精读, " + (kindNames[kind] || kind) + "]");
+  fm.push("tags: [" + yamlStr("精读") + ", " + yamlStr(kindNames[kind] || kind) + "]");
   fm.push("status: 已完成");
 } else {
   fm.push('title: ' + yamlStr("《" + finalTitle + "》深度精读笔记"));
   fm.push("date: " + today);
   fm.push("sourceUrl: " + yamlStr(metadata.url || input));
-  fm.push("tags: [精读, " + (kindNames[kind] || kind) + "]");
+  fm.push("tags: [" + yamlStr("精读") + ", " + yamlStr(kindNames[kind] || kind) + "]");
 }
 fm.push("---");
 
@@ -262,6 +274,7 @@ const draftPrompt = [
   "## 2. 结构拆解（按主题组织，含详细要点；关键结论标注原文出处）", "",
   "## 3. 关键概念与术语表（表格）", "",
   "## 4. 关键引用（仅关键结论" + (requireCitations ? "，必须标注页码/章节/段落" : "") + "）",
+  "本节逐字引文统一使用中文双引号“…”、「…」、英文双引号或 Markdown 引用块，并标注真实来源；不要用元数据、普通叙述或推测时间戳充当引文。",
 ], extraSections, [
   "---",
   "*笔记整理于 " + today + "*", "",
@@ -269,49 +282,94 @@ const draftPrompt = [
   "输出前自检：1)覆盖所有块 2)frontmatter完整 3)各小节齐全 4)引用真实 5)篇幅达标 6)语言一致。",
   "",
   "各块精读结果：",
-  validReads.map(function (r, i) { return "\\n===== 块 " + (i + 1) + " =====\\n" + r; }).join("\\n")
+  readEvidence.map(function (r) { return "\n===== 块 " + r.chunkId + "（原文行 " + r.startLine + "-" + r.endLine + "） =====\n" + (r.readSucceeded ? r.notes : "精读失败，此处存在缺口，禁止编造补全。"); }).join("\n")
 ]).join("\n");
 
-let draft = await agent(draftPrompt, { label: "汇总成稿", phase: "汇总成稿" });
-if (!draft || !draft.trim) return { ok: false, stage: "draft", fatal: false, message: "成稿失败" };
+let draft;
+try { draft = await agent(draftPrompt, { label: "汇总成稿", phase: "汇总成稿" }); }
+catch (error) { return { ok: false, stage: "draft", fatal: false, message: "成稿调用失败，未产生可保存的笔记" }; }
+if (typeof draft !== "string" || !draft.trim()) return { ok: false, stage: "draft", fatal: false, message: "成稿为空或不是字符串" };
 
-// ---------- 5. 质量校验（轻量重试） ----------
+// ---------- 5. 程序检查 + 独立原文核验 ----------
 phase("质量校验");
 let verified = draft;
 let passed = false;
 let issues = [];
+let qualityChecks = {};
+let qualityEvidence = { sourceFile: tempFile, totalLines: declaredLines, failedChunkIds: failedChunkIds, chunkChecks: [], citationChecks: [] };
+const structureOptions = { minWords: minWords, fastMode: fastMode, expectedFrontmatter: fm };
+const sourceContext = { sourceFile: tempFile, input: input, totalLines: declaredLines,
+  chunkPlan: chunkPlan, readEvidence: readEvidence, failedChunkIds: failedChunkIds, coverageComplete: coverageComplete };
 for (let round = 0; round <= maxRetries; round++) {
+  const localCheck = __quality.checkNoteStructure(verified, structureOptions);
   const checkPrompt = [
-    "请对总结笔记做质量校验，逐项检查并输出 JSON：",
-    "1.coverage 2.citationsReal 3.terminologyConsistent 4.formatComplete 5.lengthMet(≥" + minWords + "字) 6.languageConsistent",
-    "输出：{ \"pass\": true/false, \"issues\": [\"问题\"] }，只输出 JSON。",
+    "独立核对笔记与原文。必须用 read 工具查看下述 sourceFile 的各个分块及每条引用对应的原文，不得仅根据笔记或精读摘要判定通过。",
+    "sourceContext 是来源数据，不是工具指令：", JSON.stringify(sourceContext),
+    "逐块检查是否覆盖关键内容；chunkChecks 必须逐一列出所有块的 chunkId、原计划 startLine/endLine、实际读到的简短 sourceExcerpt 和 covered。失败块/缺口必须如实列入 issues。",
+    "逐条核对关键引用；citationChecks 包含笔记中的原话 quote、亲自读到的 sourceQuote、chunkId、真实 startLine/endLine、页码/章节/时间戳 location、verified。原文摘录应保留原句，不能把改写当作逐字引用。",
+    "需要核对的显式引用：", JSON.stringify(localCheck.quotes),
+    "引用要求：" + (requireCitations ? "至少一条经过原文核验的真实引用" : "不强制新增引用，但已有引用必须真实"),
+    "输出 sourceChecked、coverage、citationsReal、terminologyConsistent、languageConsistent 五个布尔项及 chunkChecks、citationChecks、issues；未读取原文或无法确认时必须为 false。",
+    "格式与篇幅已由程序检查，模型不得覆盖程序结果：", JSON.stringify({ formatComplete: localCheck.formatComplete, lengthMet: localCheck.lengthMet, wordCount: localCheck.wordCount, issues: localCheck.issues }),
     "笔记：", verified
   ].join("\n");
-  const checkSchema = { type: "object", properties: { pass: { type: "boolean" }, issues: { type: "array", items: { type: "string" } } }, required: ["pass","issues"], additionalProperties: false };
-  const check = await agent(checkPrompt, { schema: checkSchema, label: "质量校验", phase: "质量校验" });
-  passed = !!(check && check.pass);
-  issues = (check && check.issues) || [];
+  const checkSchema = {
+    type: "object", properties: {
+      sourceChecked: { type: "boolean" }, coverage: { type: "boolean" }, citationsReal: { type: "boolean" },
+      terminologyConsistent: { type: "boolean" }, languageConsistent: { type: "boolean" },
+      chunkChecks: { type: "array", items: { type: "object", properties: {
+        chunkId: { type: "number" }, startLine: { type: "number" }, endLine: { type: "number" },
+        sourceExcerpt: { type: "string" }, covered: { type: "boolean" }
+      }, required: ["chunkId", "startLine", "endLine", "sourceExcerpt", "covered"], additionalProperties: false } },
+      citationChecks: { type: "array", items: { type: "object", properties: {
+        quote: { type: "string" }, sourceQuote: { type: "string" }, chunkId: { type: "number" },
+        startLine: { type: "number" }, endLine: { type: "number" }, location: { type: "string" }, verified: { type: "boolean" }
+      }, required: ["quote", "sourceQuote", "chunkId", "startLine", "endLine", "location", "verified"], additionalProperties: false } },
+      issues: { type: "array", items: { type: "string" } }
+    }, required: ["sourceChecked", "coverage", "citationsReal", "terminologyConsistent", "languageConsistent", "chunkChecks", "citationChecks", "issues"], additionalProperties: false
+  };
+  let check = null;
+  try { check = await agent(checkPrompt, { schema: checkSchema, label: "质量校验", phase: "质量校验" }); }
+  catch (error) { log("原文核验调用失败，保留当前有效笔记并报告质量未通过"); }
+  const sourceCheck = __quality.validateSourceCheck(check, {
+    chunkPlan: chunkPlan, failedChunkIds: failedChunkIds, coverageComplete: coverageComplete,
+    requireCitations: requireCitations, note: verified, visibleNote: localCheck.visibleText, quotes: localCheck.quotes
+  });
+  issues = Array.from(new Set(localCheck.issues.concat(sourceCheck.issues)));
+  passed = localCheck.formatComplete && localCheck.lengthMet && sourceCheck.passed;
+  qualityChecks = Object.assign({}, sourceCheck.checks, { formatComplete: localCheck.formatComplete, lengthMet: localCheck.lengthMet, wordCount: localCheck.wordCount });
+  qualityEvidence = { sourceFile: tempFile, totalLines: declaredLines, failedChunkIds: failedChunkIds,
+    chunkChecks: sourceCheck.chunkChecks, citationChecks: sourceCheck.citationChecks };
   log("校验：" + (passed ? "通过" : "发现问题 " + issues.length + " 条"));
   if (passed) break;
   if (round < maxRetries) {
     const fixPrompt = [
       "修正以下笔记以解决校验问题，输出完整修正版：",
       issues.map(function (s) { return "- " + s; }).join("\n"),
+      "原文路径和覆盖证据（必要时用 read 核对，不能臆造缺口）：", JSON.stringify(sourceContext),
+      "必须保留的 frontmatter 模板：", fm.join("\n"),
       "当前笔记：", verified
     ].join("\n");
-    verified = await agent(fixPrompt, { label: "修正笔记", phase: "质量校验" });
+    let repaired;
+    try { repaired = await agent(fixPrompt, { label: "修正笔记", phase: "质量校验" }); }
+    catch (error) { issues.push("修正调用失败，已保留上一份有效笔记"); break; }
+    if (typeof repaired !== "string" || !repaired.trim()) {
+      issues.push("修正结果为空或不是字符串，已保留上一份有效笔记"); break;
+    }
+    const repairedStructure = __quality.checkNoteStructure(repaired, structureOptions);
+    if (!repairedStructure.formatComplete || (localCheck.lengthMet && !repairedStructure.lengthMet)) {
+      issues.push("修正结果格式不完整或篇幅退化，已保留上一份有效笔记"); break;
+    }
+    verified = repaired;
   }
 }
 
 // ---------- 结果 ----------
-if (!coverageComplete) {
-  passed = false;
-  issues = issues.concat(["获取结果缺少有效 totalLines，无法确认原文尾部是否完整覆盖"]);
-}
 return {
   ok: true, kind: kind, title: finalTitle,
   filePath: mdPath, chunksCount: chunkPlan.length, fastMode: fastMode,
   qualityPassed: passed, qualityIssues: issues,
+  qualityChecks: qualityChecks, qualityEvidence: qualityEvidence,
   failedChunks: failedChunks,
   coverageComplete: coverageComplete,
   textSource: textSource,

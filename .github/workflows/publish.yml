@@ -1,4 +1,6 @@
 name: Publish to npm
+run-name: >-
+  publish ${{ inputs.publish_ref || github.ref }} | sha=${{ inputs.publish_sha || github.sha }} | mode=${{ inputs.dry_run == 'true' && 'dry-run' || 'real' }} | id=${{ inputs.correlation_id || github.run_id }}
 
 # 通过 npm Trusted Publishing（OIDC）发布，全程不需要任何长期 token，也不需要 OTP。
 #
@@ -45,6 +47,14 @@ on:
         description: '只演练不发布（true = npm publish --dry-run）'
         required: false
         default: 'false'
+      publish_sha:
+        description: '预期 tag 的 commit SHA（自动发布脚本填写，防止 tag 在调度期间改变）'
+        required: false
+        default: ''
+      correlation_id:
+        description: '本次调度的唯一标识（自动发布脚本填写）'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -59,10 +69,57 @@ jobs:
     name: gate and publish (Trusted Publishing)
     runs-on: ubuntu-latest
     steps:
+      - name: Validate tag reference before checkout
+        id: source
+        shell: bash
+        env:
+          PUBLISH_REF: ${{ inputs.publish_ref }}
+          EXPECTED_SHA: ${{ inputs.publish_sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          CORRELATION_ID: ${{ inputs.correlation_id || github.run_id }}
+        run: |
+          set -euo pipefail
+          REF="${PUBLISH_REF:-}"
+          if [ -z "$REF" ]; then
+            if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
+              echo "::error::empty publish_ref requires a tag event, not a branch"
+              exit 1
+            fi
+            REF="${GITHUB_REF:-}"
+          fi
+          if [[ ! "$REF" =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::publish_ref must be a complete refs/tags/vX.Y.Z reference"
+            exit 1
+          fi
+          git check-ref-format "$REF"
+          case "${DRY_RUN:-false}" in
+            true) MODE=dry-run ;;
+            false|"") MODE=real ;;
+            *) echo "::error::dry_run must be true or false"; exit 1 ;;
+          esac
+          if [[ ! "${CORRELATION_ID:-}" =~ ^[a-zA-Z0-9._-]{1,80}$ ]]; then
+            echo "::error::invalid correlation_id"
+            exit 1
+          fi
+          TAGS=$(git ls-remote --exit-code "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" "$REF" "${REF}^{}")
+          TAG_SHA=$(printf '%s\n' "$TAGS" | awk -v ref="$REF" '$2 == ref { print $1 }')
+          PEELED_SHA=$(printf '%s\n' "$TAGS" | awk -v ref="${REF}^{}" '$2 == ref { print $1 }')
+          COMMIT="${PEELED_SHA:-$TAG_SHA}"
+          if [[ ! "$TAG_SHA" =~ ^[0-9a-f]{40}$ || ! "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::tag was not found or did not resolve to one object"
+            exit 1
+          fi
+          if [ -n "${EXPECTED_SHA:-}" ] && [ "$COMMIT" != "$EXPECTED_SHA" ]; then
+            echo "::error::tag commit does not match the dispatched publish_sha"
+            exit 1
+          fi
+          printf 'publish_ref=%s\ncommit=%s\nmode=%s\n' "$REF" "$COMMIT" "$MODE" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.publish_ref || github.ref }}
+          ref: ${{ steps.source.outputs.publish_ref }}
+          fetch-depth: 0
 
       # registry-url 是必需的：让 npm publish 解析到公共 registry，也让 npm 的 OIDC
       # 客户端知道去哪个 registry 换发布用的短期凭据。这里不设 NODE_AUTH_TOKEN。
@@ -86,33 +143,26 @@ jobs:
           fi
 
       - name: Guard package.json version against the ref
+        shell: bash
         env:
-          PUBLISH_REF: ${{ inputs.publish_ref }}
+          PUBLISH_REF: ${{ steps.source.outputs.publish_ref }}
+          EXPECTED_SHA: ${{ steps.source.outputs.commit }}
+          PUBLISH_MODE: ${{ steps.source.outputs.mode }}
+          CORRELATION_ID: ${{ inputs.correlation_id || github.run_id }}
         run: |
+          set -euo pipefail
           PKG=$(node -p "require('./package.json').version")
-          case "$PUBLISH_REF" in
-            refs/tags/*) REF="${PUBLISH_REF#refs/tags/}" ;;
-            "")          REF="${GITHUB_REF_NAME}" ;;
-            *)           REF="${PUBLISH_REF##*/}" ;;
-          esac
-          echo "package.json=$PKG  ref=$REF"
-          case "$REF" in
-            v*)
-              TAG="${REF#v}"
-              if [ "$PKG" != "$TAG" ]; then
-                echo "::error::package.json version ($PKG) does not match tag ($REF)"
-                exit 1
-              fi
-              echo "OK: version and tag agree"
-              ;;
-            *)
-              # A branch ref publishes whatever that branch happens to contain
-              # under its own package.json version — main is normally AHEAD of
-              # the last tag, so those bytes would match no tag at all.
-              echo "::error::refusing to publish from a non-tag ref ($REF) -- pass publish_ref=refs/tags/vX.Y.Z"
-              exit 1
-              ;;
-          esac
+          HEAD_SHA=$(git rev-parse --verify 'HEAD^{commit}')
+          TAG_SHA=$(git rev-parse --verify "${PUBLISH_REF}^{commit}")
+          if [ "$HEAD_SHA" != "$EXPECTED_SHA" ] || [ "$TAG_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::checkout/tag commit changed or the tag does not name a commit"
+            exit 1
+          fi
+          if [ "$PKG" != "${PUBLISH_REF#refs/tags/v}" ]; then
+            echo "::error::package.json version ($PKG) does not match tag ($PUBLISH_REF)"
+            exit 1
+          fi
+          echo "publish-identity ref=$PUBLISH_REF sha=$TAG_SHA mode=$PUBLISH_MODE correlation=$CORRELATION_ID attempt=$GITHUB_RUN_ATTEMPT"
 
       # release 事件与手动 dispatch 会对同一个版本各跑一次。已发布不是错误，只是无事可做。
       # 跳过发布步骤并留一条 warning —— 既幂等，也不会把「发过了」伪装成绿。
@@ -129,6 +179,10 @@ jobs:
             echo "OK: $NAME@$VER is not on npm yet"
           fi
 
+      - name: Install dependencies
+        if: steps.published.outputs.state == 'new'
+        run: npm ci --ignore-scripts
+
       - name: Release gate (tests, lint, security)
         if: steps.published.outputs.state == 'new'
         run: |
@@ -140,8 +194,10 @@ jobs:
       # 不带 token、不带 --provenance：Trusted Publishing 会自动生成 provenance。
       - name: Publish to npm (OIDC, no token)
         if: steps.published.outputs.state == 'new'
+        env:
+          PUBLISH_MODE: ${{ steps.source.outputs.mode }}
         run: |
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
+          if [ "$PUBLISH_MODE" = "dry-run" ]; then
             echo "dry-run: 只演练，不上传"
             npm publish --access public --dry-run
           else

@@ -6,8 +6,9 @@
 //     （kind 的 enum 按解析器注册表补齐），脚本里不再有第二份副本。
 //   - chunkReadSchema：**workflow 没用**。波次2 的子代理直接返回自由文本，
 //     成稿时按 Markdown 拼接；这份留给程序化调用方（自建管线要结构化块输出时）。
-//   - qualityChecklistSchema：**workflow 没用**。波次3 的内嵌自检走脚本内的
-//     { pass, issues } 轻量 schema。
+//   - qualityChecklistSchema：留给程序化调用方的通用六项清单。
+//     workflow 使用脚本内的原文核验 schema（逐块摘录与引用行号证据）；
+//     格式和篇幅由 lib/quality.js 的程序检查决定，不能被模型的 pass 覆盖。
 // 改这个文件会直接影响波次1 —— 改完跑 npm test（内含 schema 子集回归）。
 //
 // 注意：本 schema 子集遵循 DSH workflow agent() 的约束

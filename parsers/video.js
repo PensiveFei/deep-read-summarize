@@ -31,6 +31,7 @@ module.exports = {
     const whisperModel = o.whisperModel || "small";
     const language = o.language || "zh";
     const device = o.device || "cpu";
+    const includeTimestamps = o.includeTimestamps === true;
     const degradeMsg = "需要人工提供转写文本或视频文案";
 
     const noSubtitleBranch = wantTranscribe
@@ -48,6 +49,9 @@ module.exports = {
 
     const steps = [
       "记录文本来源（metadata.textSource）：subtitle（平台字幕）/ transcription（本地转写）/ desc（仅简介，作为降级/背景）/ manual（用户提供）。",
+      includeTimestamps
+        ? "保留真实时间定位：B站字幕保留每条 from/to，YouTube CC 保留每条 cue 的 start/end；转成文本时每段独占一行，格式为 [HH:MM:SS.mmm --> HH:MM:SS.mmm] 原文。写入目标文件时保留这些时间，不可把全文压成一行。简介/人工文案若没有真实时间信息，明确注明无法提供时间戳，禁止猜测或编造。"
+        : "字幕或转写按原有分段逐段换行写入目标文件，保留内容结构，不要把全文压成一行；本次不要求在正文标时间戳。",
       "统一流程：① 先取视频字幕（B站 AI 字幕 / YouTube yt-dlp CC）；" + noSubtitleBranch,
       "若输入是 B 站链接（bilibili.com / b23.tv，短链先用 curl -L 跟随重定向提取 BV 号）：用 curl（Windows 10+ 与 macOS/Linux 均自带，零安装）调官方公开 API：\n" +
         "  1) 元数据+简介：curl 'https://api.bilibili.com/x/web-interface/view?bvid=<BV>' → 取 title / desc（简介仅作背景/补充，不满一篇精读）/ owner.name / duration / aid / cid\n" +
@@ -64,7 +68,7 @@ module.exports = {
         "转写执行（faster-whisper " + whisperModel + " / int8 / " + language + "，镜像+缓存，保证本机与用户一致）：\n" +
         "  ① 先取音频：B站用 playurl（curl 'https://api.bilibili.com/x/player/playurl?avid=<aid>&cid=<cid>&fnval=16&fourk=1' 的 dash.audio[0].baseUrl）或 yt-dlp，下载存到 '" + tempDir + "/audio.m4a'；\n" +
           "  ② 定位插件转写脚本（文件名固定 `transcribe.js`）：Windows 用 `Get-ChildItem -Path $env:USERPROFILE/.dsh -Recurse -Filter transcribe.js`；macOS/Linux 用 `find \"$HOME/.dsh\" -name transcribe.js`（也可直接用 glob 搜 *transcribe.js）；\n" +
-          "  ③ 运行（**三平台命令行完全一致**，脚本是 Node 写的，与 pwsh / bash 无关）：`node <脚本路径> --audio '" + tempDir + "/audio.m4a' --out '" + tempDir + "/transcript.txt' --device " + device + " --model " + whisperModel + " --language " + language + "`；\n" +
+          "  ③ 运行（**三平台命令行完全一致**，脚本是 Node 写的，与 pwsh / bash 无关）：`node <脚本路径> --audio '" + tempDir + "/audio.m4a' --out '" + tempDir + "/transcript.txt' --device " + device + " --model " + whisperModel + " --language " + language + (includeTimestamps ? " --timestamps" : "") + "`；\n" +
           "  ④ 转写可能较慢：可用 run_in_background: true 启动，但必须跟踪**本次启动的进程**直到结束；只有确认**本次进程退出码为 0**，且本次目标文件 '" + tempDir + "/transcript.txt' 存在并非空，才算成功。脚本先写本次独有的暂存文件，校验后才原子发布目标文件；**不要仅凭文件非空/稳定或日志出现 DONE 判断完成，不要复用其他任务或上次运行的逐字稿**。设合理超时，超时则终止本次进程；超时/非 0 退出/空产物均按降级处理；\n" +
           "  ⑤ 成功后读取 transcript.txt 作为全文（textSource=transcription）。脚本自举：uv 建 Python 3.12 环境 + 镜像装 faster-whisper + hf-mirror 下模型并缓存；Windows/macOS/Linux 是**同一份实现**。**⚠️ 首次转写会先下载模型（small 约 484MB，hf-mirror，非 GitHub）并较慢——先向用户说明这是正常的一次性下载，勿当成卡死；之后缓存复用、秒开。**\n" +
           "  ⑥ 若 `node` 不在 PATH（macOS 从图形界面启动时常见），先用 `command -v node` 确认；确认不可用就直接降级，不要为了跑转写脚本去安装 Node。"

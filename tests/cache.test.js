@@ -92,7 +92,7 @@ test('corrupted line is skipped', () => {
 
 test('hasProcessed TTL: stale record is treated as unprocessed', () => {
   const key = cache.fingerprint('https://example.com/stale');
-  cache.markProcessed(cacheFile, key, '/tmp/stale.md', { ts: '2020-01-01T00:00:00.000Z' });
+  fs.appendFileSync(cacheFile, JSON.stringify({ key, outputPath: '/tmp/stale.md', ts: '2020-01-01T00:00:00.000Z' }) + '\n');
   assert.strictEqual(cache.hasProcessed(cacheFile, key), true, 'no TTL -> still processed');
   assert.strictEqual(cache.hasProcessed(cacheFile, key, { maxAgeMs: 60 * 1000 }), false, 'stale -> unprocessed');
   assert.strictEqual(cache.hasProcessed(cacheFile, key, { maxAgeMs: 1e12 }), true, 'recent enough -> processed');

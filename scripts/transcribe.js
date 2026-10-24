@@ -3,7 +3,7 @@
 // transcribe.js — faster-whisper 转写自举脚本（插件内部，跨平台：Windows/macOS/Linux）
 // ============================================================================
 // 用法（三平台完全一致，不需要 pwsh / bash 之别）：
-//   node transcribe.js --audio <音频文件> --out <输出txt> [--model small] [--language zh] [--device cpu|auto|cuda]
+//   node transcribe.js --audio <音频文件> --out <输出txt> [--model small] [--language zh] [--device cpu|auto|cuda] [--timestamps]
 //   node transcribe.js --self-check        # 只打印解析出的路径，不安装、不下载、不联网
 //
 // 为什么是 Node 而不是 PowerShell / shell：
@@ -171,7 +171,7 @@ function isFileAt(p) {
 
 /** 解析命令行（支持 --k v、--k=v、-k v 三种写法）。 */
 function parseArgs(argv) {
-  const out = { audio: '', out: '', model: 'small', language: 'zh', device: 'cpu', selfCheck: false, help: false, unknown: [] };
+  const out = { audio: '', out: '', model: 'small', language: 'zh', device: 'cpu', timestamps: false, selfCheck: false, help: false, unknown: [] };
   const takes = {
     '--audio': 'audio', '-a': 'audio',
     '--out': 'out', '-o': 'out',
@@ -184,6 +184,8 @@ function parseArgs(argv) {
     const a = String(list[i]);
     if (a === '--help' || a === '-h') { out.help = true; continue; }
     if (a === '--self-check') { out.selfCheck = true; continue; }
+    if (a === '--timestamps' || a === '--timestamps=true') { out.timestamps = true; continue; }
+    if (a === '--no-timestamps' || a === '--timestamps=false') { out.timestamps = false; continue; }
     if (takes[a]) {
       const v = list[i + 1];
       if (v === undefined || String(v).indexOf('-') === 0) { out.unknown.push(a); continue; }
@@ -198,7 +200,7 @@ function parseArgs(argv) {
   return out;
 }
 
-/** 运行时 Python 片段：分段文本以空格连接成一行落盘；device 默认 cpu，非 cpu 失败自动回退。 */
+/** 运行时 Python 片段：逐段换行，可保留真实起止时间；device 默认 cpu，非 cpu 失败自动回退。 */
 const PY_RUNNER = [
   "import os",
   "import sys",
@@ -210,7 +212,14 @@ const PY_RUNNER = [
   "def run(device):",
   "    model = load(device)",
   "    segs, info = model.transcribe(os.environ['DRS_AUDIO'], vad_filter=True, language=(os.environ.get('DRS_LANG') or None))",
-  "    return [s.text.strip() for s in segs], info",
+  "    return [{'start': s.start, 'end': s.end, 'text': s.text.strip()} for s in segs], info",
+  "",
+  "def timestamp(seconds):",
+  "    millis = max(0, int(round(float(seconds) * 1000)))",
+  "    hours, millis = divmod(millis, 3600000)",
+  "    minutes, millis = divmod(millis, 60000)",
+  "    seconds, millis = divmod(millis, 1000)",
+  "    return '%02d:%02d:%02d.%03d' % (hours, minutes, seconds, millis)",
   "",
   "# device 默认 cpu：ctranslate2 只要探测到 NVIDIA 显卡就会在 auto 下选 CUDA，",
   "# 而多数机器没装 cuBLAS/cuDNN（cublas64_12.dll），会在推理时硬失败（实测 RTX 3050 复现）。",
@@ -225,8 +234,17 @@ const PY_RUNNER = [
   "",
   "# DRS_OUT 是本次调用独有的暂存路径；Node 校验后才原子发布到最终路径。",
   "# 先收集全部分段再落盘，中途推理失败不会留下半截文本。",
-  "with open(os.environ['DRS_OUT'], 'w', encoding='utf-8') as f:",
-  "    f.write(' '.join([x for x in segments if x]))",
+  "include_timestamps = os.environ.get('DRS_TIMESTAMPS') == '1'",
+  "lines = []",
+  "for segment in segments:",
+  "    text = segment['text'].replace('\\r', ' ').replace('\\n', ' ')",
+  "    if not text:",
+  "        continue",
+  "    if include_timestamps:",
+  "        text = '[%s --> %s] %s' % (timestamp(segment['start']), timestamp(segment['end']), text)",
+  "    lines.append(text)",
+  "with open(os.environ['DRS_OUT'], 'w', encoding='utf-8', newline='\\n') as f:",
+  "    f.write('\\n'.join(lines))",
   ""
 ].join("\n");
 
@@ -235,11 +253,12 @@ const PY_RUNNER = [
 // ---------------------------------------------------------------------------
 
 const USAGE = [
-  '用法：node transcribe.js --audio <音频文件> --out <输出txt> [--model small] [--language zh] [--device cpu|auto|cuda]',
+  '用法：node transcribe.js --audio <音频文件> --out <输出txt> [--model small] [--language zh] [--device cpu|auto|cuda] [--timestamps]',
   '      node transcribe.js --self-check   # 只打印解析出的路径，不安装不下载',
   '',
   '选项：--audio/-a  --out/-o  --model/-m（默认 small）  --language/-l（默认 zh）',
-  '      --device（默认 cpu；auto/cuda 需自备 CUDA 运行库，失败会自动回退 cpu）'
+  '      --device（默认 cpu；auto/cuda 需自备 CUDA 运行库，失败会自动回退 cpu）',
+  '      --timestamps（逐段保留真实起止时间；默认关闭，关闭时仍按段换行）'
 ].join('\n');
 
 function fail(msg, code) {
@@ -346,6 +365,7 @@ function main(argv) {
     childEnv.DRS_MODEL = args.model;
     childEnv.DRS_LANG = args.language;
     childEnv.DRS_DEVICE = args.device;
+    childEnv.DRS_TIMESTAMPS = args.timestamps ? '1' : '0';
 
     const pyScript = path.join(stagingDir, 'transcribe_run.py');
     fs.writeFileSync(pyScript, PY_RUNNER, 'utf8');

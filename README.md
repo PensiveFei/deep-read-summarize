@@ -74,6 +74,10 @@ Markdown 笔记
 
 分块计划会排序、裁掉重复区间并补齐缺口，超过 `maxChunks` 时合并相邻块以保留全文。返回的 `coverageComplete` 表示是否依据有效的 `totalLines` 覆盖全部行号；缺少总行数时保留已知范围，同时将 `qualityPassed` 置为 `false` 并说明覆盖无法确认。
 
+质量检查分两部分：程序按提供的标量/列表 frontmatter 模板检查字段、必要章节和篇幅（汉字按字、其他文字按词，排除 frontmatter、代码块、HTML 注释及链接地址）；独立核验代理读取本次原文文件，逐块检查覆盖，并为第 4 节的逐字引用返回原句和行号。单独的 `pass: true` 无法通过检查。`qualityChecks` 返回检查项，`qualityEvidence` 返回原文路径、分块摘录和引用证据；原文真实性判断仍由读取原文的代理完成，无法核实就报告未通过。修订为空、调用失败或结构退化时保留上一份有效成稿。
+
+直接调用 workflow 的 options 必须类型正确：`minWords` 为 1–100000 的整数，`maxChunks` 为正整数（大于 12 仍夹到 12），`maxRetries` 为 0–3 的整数；非法值和未知键在启动时 FATAL。插件 profile 的 config 则逐项告警并回退默认值，避免阻止宿主启动。
+
 ```
 parsers/         各输入类型的解析器，按类型分发
   book.js        书籍：PDF/EPUB/MOBI 文本提取、章节分块
@@ -93,6 +97,8 @@ workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema �
 > 脚本正文单独放 `lib/workflow-script.txt`：这个文件曾经因为「转义套转义」被改坏过两次，现在它是普通文本，读改都不需要编码步骤。
 
 想换某个输入类型的处理方式，在 `custom-parsers/` 放一个同接口的解析器即可，同名类型会覆盖内置实现；用新类型名（如 `podcast`）也可以——注册表里的解析器会全部内联进 workflow 脚本，`type` 白名单与 schema 的 `kind` 枚举都跟着注册表走。接口只有三个字段：`name`、`types`、`buildPrompt(input, opts)`。
+
+解析器的 CommonJS 模块会连同字面量相对路径的 `.js` / `.cjs` / `.json` 依赖一起打包，保留模块级常量、helper、方法简写和循环依赖。构建时使用 Acorn 解析 JavaScript；它由 npm 自动安装，不进入 workflow 沙箱。沙箱中的解析器只负责生成提示词，不支持 Node 内置模块、外部包或动态 `require` / `import`；这些依赖会在构建时明确报错。程序化注册的函数须自包含，模块闭包请使用文件解析器。
 
 ---
 
@@ -118,7 +124,7 @@ workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema �
 deep-read-summarize 是 DSH 插件，可通过 npm 或本地安装：
 
 ```bash
-# npm 安装（已发布到 registry，无第三方依赖）
+# npm 安装（自动安装用于解析器构建的 Acorn）
 npm install deep-read-summarize
 
 # 或本地安装（dsh profile 目录）
@@ -145,7 +151,7 @@ npm install deep-read-summarize
 # 方式 B：从源码开发
 git clone https://github.com/<your-org>/deep-read-summarize.git
 cd deep-read-summarize
-npm install        # 无第三方依赖，仅初始化
+npm ci             # 安装锁定依赖
 ```
 
 ### 2. 验证环境（离线，不需要任何 API key）
@@ -154,7 +160,7 @@ npm install        # 无第三方依赖，仅初始化
 npm test           # 35 项 fixture 测试，全部离线跑通
 ```
 
-看到 `TOTAL: 25 passed, 0 failed` 即环境就绪。
+看到 `TOTAL: 35 passed, 0 failed` 即环境就绪。
 
 ### 3. 一行命令喂入 demo 文件
 
@@ -221,7 +227,7 @@ parsers: book, paper, video, web
 
 ### frontmatter 三档（`options.frontmatter`）
 
-默认 `obsidian`，与历史版本**逐字一致**。之所以要分档：`type`、`aliases`、`url` 在 Hugo 里是**保留键**，语义和 Obsidian 完全不同——直接丢进 Hugo 会改变渲染行为，而不是多几个无害字段。
+默认 `obsidian`，键集与历史版本一致，标量和列表值使用安全引号。之所以要分档：`type`、`aliases`、`url` 在 Hugo 里是**保留键**，语义和 Obsidian 完全不同——直接丢进 Hugo 会改变渲染行为，而不是多几个无害字段。
 
 | 键 | `obsidian`（默认） | `generic` | `minimal` |
 |---|---|---|---|
@@ -312,7 +318,7 @@ parsers: book, paper, video, web
 
 ## 成本
 
-一篇论文、6 块、完整模式，大约 15-25k token。用 `fastMode` 并调低 `maxChunks` 能省四成左右。
+Token 用量取决于原文长度、分块数和成稿篇幅。原文核验会再次读取资料，每轮修订还会增加一次修订和一次核验调用。`fastMode` 减少输出章节；调低 `maxChunks` 限制代理数，同时保留全文覆盖。
 
 ---
 

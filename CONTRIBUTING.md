@@ -5,7 +5,7 @@ Thanks for your interest! Here's how to contribute.
 ## Development Setup
 
 ```bash
-npm install        # dev deps
+npm ci             # locked dependencies
 npm test           # fixture-driven tests
 npm run lint       # node --check on all .js files
 ```

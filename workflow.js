@@ -3,7 +3,7 @@
 // Version: 3.0.0
 // ============================================================================
 // 【用法】meta → workflow meta；script → workflow script；
-//   args: { "input": "<url|path>", "type": "auto", "options": { "minWords": 2500, "fastMode": false, "maxChunks": 4, "transcribe": true, "requireCitations": true, "includeTimestamps": false, "cache": true, "outputDir": "./output", "tempDir": "./.tmp" } }
+//   args: { "input": "<url|path>", "type": "auto", "options": { "minWords": 2500, "fastMode": false, "maxChunks": 4, "transcribe": true, "requireCitations": true, "includeTimestamps": false, "outputDir": "./output", "tempDir": "./.tmp" } }
 // ============================================================================
 
 const meta = {
@@ -44,8 +44,10 @@ const RAW_SCRIPT = fs.readFileSync(path.join(__dirname, "lib", "workflow-script.
 
 // ===== parsers 注册表（运行时注入，实现插件化）=====
 const parsers = require("./parsers");
-const promptImpl = require("./parsers/_prompt");
 const schemas = require("./schemas");
+const { buildParserBundle } = require("./lib/parser-bundle");
+const { normalizeWorkflowOptions } = require("./lib/options");
+const quality = require("./lib/quality");
 const parserRegistry = parsers.registry;
 
 /**
@@ -60,12 +62,6 @@ const parserRegistry = parsers.registry;
  * 保持单一真相，不再和脚本里的副本各自漂移。
  */
 function buildSelfContainedScript() {
-  const parserSource = (name) =>
-    parserRegistry.parsers[name].buildPrompt
-      .toString()
-      // buildPrompt 闭包引用模块级 prompt（parsers/_prompt），内联后改指 __prompt
-      .replace(/\bprompt\.buildFetchPrompt\b/g, "__prompt.buildFetchPrompt");
-
   const parserNames = Object.keys(parserRegistry.parsers);
   // kind 的合法取值跟着解析器表走（含自定义类型），不再写死四个内置类型。
   const fetchSchema = JSON.parse(JSON.stringify(schemas.fetchResultSchema));
@@ -74,12 +70,7 @@ function buildSelfContainedScript() {
   }
 
   const impl = [
-    "const __prompt = { buildFetchPrompt: " + promptImpl.buildFetchPrompt.toString() + " };",
-    "const __parsers = {",
-    parserNames
-      .map((name) => "  " + JSON.stringify(name) + ": { buildPrompt: " + parserSource(name) + " }")
-      .join(",\n"),
-    "};",
+    buildParserBundle(parserRegistry),
     "const fetchSchema = " + JSON.stringify(fetchSchema) + ";"
   ].join("\n");
 
@@ -87,7 +78,10 @@ function buildSelfContainedScript() {
   if (!RAW_SCRIPT.includes(marker)) {
     throw new Error("workflow script marker not found: " + marker);
   }
-  return RAW_SCRIPT.replace(marker, impl + "\nconst parsers = args._parsers || __parsers;");
+  return 'const normalizeWorkflowOptions = ' + normalizeWorkflowOptions.toString() + ';\n' +
+    'const __quality = { checkNoteStructure: ' + quality.checkNoteStructure.toString() +
+    ', validateSourceCheck: ' + quality.validateSourceCheck.toString() + ' };\n' +
+    RAW_SCRIPT.replace(marker, impl + "\nconst parsers = args._parsers || __parsers;");
 }
 
 const script = buildSelfContainedScript();

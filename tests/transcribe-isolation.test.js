@@ -208,6 +208,19 @@ test('the embedded runner cannot announce DONE before the Node validator', funct
   assert.ok(!/print\(['"]DONE/.test(transcribe.PY_RUNNER));
 });
 
+test('timestamp CLI option reaches the current transcription process', function (t) {
+  const flags = [];
+  const h = harness(t, { transcribe: function (staged, env) {
+    flags.push(env.DRS_TIMESTAMPS);
+    fs.writeFileSync(staged, 'mock segment');
+    return { status: 0 };
+  } });
+  assert.equal(h.main(['--audio', h.audio, '--out', h.out, '--timestamps']), 0);
+  assert.equal(h.main(['--audio', h.audio, '--out', h.out, '--timestamps=false']), 0);
+  assert.deepEqual(flags, ['1', '0']);
+  assertNoStaging(h);
+});
+
 test('video completion requires the current process and current task artifact', function () {
   const prompt = video.buildPrompt('https://youtu.be/example', { tempDir: './.tmp/task-unique' });
   assert.ok(prompt.includes('本次进程退出码为 0'));

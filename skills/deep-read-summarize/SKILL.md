@@ -40,13 +40,13 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 4. **波次1 获取+分块**：解析器获取全文 → 写入本次独立的临时子目录 → 生成分块计划（JSON Schema 校验）。`tempDir` 是根目录，不要复用其他 `run-*` 任务的 input/audio/transcript；分块超过上限时合并相邻区间，保持从第 1 行到 totalLines 的完整覆盖
 5. **波次2 并行精读**：每个分块一个子代理深度精读（Map）
 6. **波次3 合并成稿**：整合为完整笔记（Reduce），内嵌质量自检
-7. **质量校验**：可选重试（maxRetries），检查覆盖度/引用真实性/术语一致/格式完整/篇幅/语言
+7. **质量校验**：程序检查 frontmatter 模板、必要章节和篇幅；核验代理必须读取本次原文，逐块提供摘录、对第 4 节逐字引用提供原句与行号。不得只看笔记或仅返回 pass。`qualityEvidence` 可供回查；核验失败必须如实报告。`maxRetries` 为 0–3，修订失败、空结果或结构退化时保留上一份有效成稿
 8. **落盘（必须，别跳过）**：workflow 工具只返回 `note`（笔记正文）与 `filePath`（建议路径）——**脚本本身没有文件系统权限**。拿到结果后要用 `write` 工具把 `note` 原样写入 `filePath`（目录不存在就先创建）；不写就等于笔记丢了，用户只会看到一段返回文本
 9. **如实交代结果**：`ok: false` 要说明卡在哪一步（`stage`）和原因，别拿半成品冒充成品；`qualityPassed: false`、`qualityIssues` 非空、或 `failedChunks > 0`（有块精读失败、笔记存在缺口）时，必须在回复里点出来
 
 ## 输出
 
-workflow 返回 `{ ok, filePath, note, qualityPassed, qualityIssues, failedChunks, coverageComplete, textSource }`。`coverageComplete: false` 表示获取结果缺少有效总行数，无法确认尾部覆盖；此时质量状态也会降级，必须向用户说明。
+workflow 返回 `{ ok, filePath, note, qualityPassed, qualityIssues, qualityChecks, qualityEvidence, failedChunks, coverageComplete, textSource }`。`coverageComplete: false` 表示获取结果缺少有效总行数，无法确认尾部覆盖；此时质量状态也会降级，必须向用户说明。
 
 > ⚠️ **`note` 就是完整笔记正文，`filePath` 只是建议路径**：脚本运行在无文件系统的沙箱里（DSH 的 workflow 契约：脚本只负责协调子代理），**它不会替你写文件**。必须由你（主代理）在拿到结果后用 `write` 工具把它写到 `filePath`——默认 `./output/`，可用 `options.outputDir` 指向 Obsidian 仓库或静态站点的内容目录。
 
@@ -85,6 +85,7 @@ status: 已完成
 - 运行 yt-dlp 加 `--socket-timeout 15 --retries 3` 防超时。
 - **跨平台**：Windows / macOS / Linux **同等支持**（0.3.9 起）。无字幕自动转写走 `scripts/transcribe.js`（Node + `uv` + Python 3.12），三平台命令一致：`node <脚本路径> --audio <音频> --out <txt> [--device cpu]`；脚本定位命令按系统选（Windows `Get-ChildItem -Path $env:USERPROFILE/.dsh -Recurse -Filter transcribe.js`，macOS/Linux `find "$HOME/.dsh" -name transcribe.js`）。缓存目录按平台取：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`。若 `node` 不在 PATH（macOS 从图形界面启动时常见）则直接降级，不要为此安装 Node。
 - 默认不标时间戳（`options.includeTimestamps` 可开）
+- 开启时间戳时保留字幕 cue 或转写分段的真实起止时间，输出 `[HH:MM:SS.mmm --> HH:MM:SS.mmm]`；关闭时仍逐段换行。原文没有时间信息时注明无法定位，不得推算或编造。
 
 ## 参考
 

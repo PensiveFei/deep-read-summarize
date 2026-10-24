@@ -69,5 +69,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/PensiveFei/deep-read-summarize.git"
+  },
+  "dependencies": {
+    "acorn": "8.19.0"
   }
 }
