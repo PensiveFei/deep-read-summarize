@@ -176,7 +176,7 @@ test('workflow: frontmatter escapes quotes coming from the content title', async
 test('workflow: a title of nothing but illegal characters still yields a usable filename', async () => {
   const r = await runScript({ input: 'x', type: 'web' }, makeAgent({ kind: 'web', title: '///' }));
   assert.ok(!/\/\.md$/.test(r.result.filePath), 'must not write a hidden .md: ' + r.result.filePath);
-  assert.ok(/未命名内容\.md$/.test(r.result.filePath), r.result.filePath);
+  assert.ok(/未命名内容-[a-f0-9]{8}\.md$/.test(r.result.filePath), r.result.filePath);
 });
 
 test('workflow: auto retains its selected parser when fetch omits kind', async () => {
@@ -356,8 +356,10 @@ test('transcribe: the runner never leaves a half-written transcript behind', () 
   assert.ok(transcribe.PY_RUNNER.includes('segments, info = run(device)'),
     'segments must be collected before the file is opened');
   assert.ok(/with open\(os\.environ\['DRS_OUT'\]/.test(transcribe.PY_RUNNER));
-  assert.strictEqual(transcribe.PY_RUNNER.indexOf('with open'),
-    transcribe.PY_RUNNER.lastIndexOf('with open'), 'exactly one write, after collection');
+  const transcriptWrites = transcribe.PY_RUNNER.match(/with open\(os\.environ\['DRS_OUT'\]/g) || [];
+  assert.strictEqual(transcriptWrites.length, 1, 'exactly one transcript write, after collection');
+  assert.ok(transcribe.PY_RUNNER.indexOf("with open(os.environ['DRS_OUT']") >
+    transcribe.PY_RUNNER.indexOf('segments, info = run(device)'));
 });
 
 test('skill: the Windows-only transcription caveat is gone', () => {

@@ -27,19 +27,21 @@ test('fingerprint differs for different inputs', () => {
   assert.notStrictEqual(a, b);
 });
 
-test('fingerprint normalizes URL variants', () => {
-  const a = cache.fingerprint('https://EXAMPLE.com/doc/');
-  const b = cache.fingerprint('https://example.com/doc#frag');
-  assert.strictEqual(a, b, 'URL variants (case/slash/fragment) should share fingerprint');
+test('fingerprint normalizes only equivalent URL forms', () => {
+  const a = cache.fingerprint('https://EXAMPLE.com:443/doc');
+  const b = cache.fingerprint('https://example.com/doc');
+  assert.strictEqual(a, b, 'host case and the default port should share a fingerprint');
+  assert.notStrictEqual(a, cache.fingerprint('https://example.com/doc/'), 'a slash can select another resource');
+  assert.notStrictEqual(a, cache.fingerprint('https://example.com/doc#frag'), 'a fragment can select another reading scope');
   const c = cache.fingerprint('https://example.com/doc?x=1');
   assert.notStrictEqual(a, c, 'different query should produce different fingerprint');
 });
 
-test('fingerprint normalizes trailing empty query (doc vs doc?)', () => {
+test('fingerprint preserves an explicit empty query (doc vs doc?)', () => {
   const a = cache.fingerprint('https://example.com/doc');
   const b = cache.fingerprint('https://example.com/doc?');
-  assert.strictEqual(a, b, 'trailing "?" (empty query) should not create a distinct fingerprint');
-  assert.strictEqual(cache.normalizeInput('https://example.com/doc?'), 'https://example.com/doc');
+  assert.notStrictEqual(a, b, 'an explicit empty query can select a distinct resource');
+  assert.strictEqual(cache.normalizeInput('https://example.com/doc?'), 'https://example.com/doc?');
 });
 
 test('fingerprint keeps size 0 distinct from absent meta', () => {

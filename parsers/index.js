@@ -29,11 +29,22 @@ const builtins = {
  * 同名类型会覆盖内置解析器（用户按需替换）。
  */
 class ParserRegistry {
-  constructor() {
+  constructor(settings = {}) {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('parser registry settings must be an object');
+    if (settings.customParsersDir !== undefined && (typeof settings.customParsersDir !== 'string' || !settings.customParsersDir.trim() || /[\u0000\r\n]/.test(settings.customParsersDir))) {
+      throw new Error('customParsersDir must be a non-empty directory path');
+    }
     this.parsers = Object.create(null);
     this._sources = new WeakMap();
     for (const type of Object.keys(builtins)) this.register(builtins[type], require.resolve('./' + type));
-    this._loadCustom();
+    const bundledDir = path.join(__dirname, '..', 'custom-parsers');
+    this._loadCustom(bundledDir);
+    // Explicit profile/project paths overlay package-owned defaults. Never scan
+    // arbitrary working directories for executable code without configuration.
+    if (settings.customParsersDir !== undefined) {
+      const customDir = path.resolve(settings.baseDir || process.cwd(), settings.customParsersDir);
+      if (customDir !== path.resolve(bundledDir)) this._loadCustom(customDir, true);
+    }
   }
 
   /** Remember the module, not just its function: module factories preserve helpers and closures. */
@@ -60,11 +71,16 @@ class ParserRegistry {
     return undefined;
   }
 
-  _loadCustom() {
-    const customDir = path.join(__dirname, "..", "custom-parsers");
-    if (!fs.existsSync(customDir)) return;
-    for (const file of fs.readdirSync(customDir)) {
-      if (!file.endsWith(".js")) continue;
+  _loadCustom(customDir, explicit) {
+    if (!fs.existsSync(customDir)) {
+      if (explicit) console.warn('[parsers] custom parser directory does not exist:', customDir);
+      return;
+    }
+    let files;
+    try { files = fs.readdirSync(customDir); }
+    catch (error) { console.warn('[parsers] cannot read custom parser directory:', customDir, error.message); return; }
+    for (const file of files.sort()) {
+      if (!/\.(?:js|cjs)$/.test(file)) continue;
       try {
         const filename = path.join(customDir, file);
         const mod = require(filename);

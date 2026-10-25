@@ -21,8 +21,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-// 版本锁定：保证作者机器与用户机器跑的是同一套（见 README「转写工具链」）。
+// 新环境使用 Python 3.12；ASR 主包固定为已验证版本。
+// 复用环境不强制更换解释器；实际 Python / 传递依赖版本记录在 runtime.json。
 const PY_VERSION = '3.12';
+const FASTER_WHISPER_VERSION = '1.2.1';
+const DEPENDENCY_MISSING = 20;
+const DEPENDENCY_VERSION_MISMATCH = 21;
 const PYPI_MIRROR = 'https://pypi.tuna.tsinghua.edu.cn/simple';
 // uv 拉 CPython 走的是 GitHub（python-build-standalone），在部分网络下极慢 → 默认走镜像加速。
 // ⚠️ 镜像会失效，而且代价很大：旧的 ghproxy.com 现在 301 到 ghfast.top 并丢掉路径，返回的是
@@ -204,7 +208,61 @@ function parseArgs(argv) {
 const PY_RUNNER = [
   "import os",
   "import sys",
-  "from faster_whisper import WhisperModel",
+  "import json",
+  "import tempfile",
+  "import importlib.metadata as metadata",
+  "",
+  "def bootstrap_required(code, reason, message):",
+  "    status_file = os.environ.get('DRS_BOOTSTRAP_STATUS')",
+  "    if status_file:",
+  "        with open(status_file, 'w', encoding='utf-8') as f:",
+  "            json.dump({'code': code, 'reason': reason}, f)",
+  "    print('[transcribe] ' + message, file=sys.stderr)",
+  "    sys.exit(code)",
+  "",
+  "expected_version = os.environ.get('DRS_FASTER_WHISPER_VERSION')",
+  "if expected_version:",
+  "    try:",
+  "        installed_version = metadata.version('faster-whisper')",
+  "    except metadata.PackageNotFoundError:",
+  "        bootstrap_required(" + DEPENDENCY_MISSING + ", 'missing-dependency', 'faster-whisper is not installed')",
+  "    if installed_version != expected_version:",
+  "        bootstrap_required(" + DEPENDENCY_VERSION_MISMATCH + ", 'version-mismatch', 'faster-whisper %s requires %s' % (installed_version, expected_version))",
+  "",
+  "try:",
+  "    from faster_whisper import WhisperModel",
+  "except ModuleNotFoundError as exc:",
+  "    bootstrap_required(" + DEPENDENCY_MISSING + ", 'missing-dependency', 'missing import dependency: %s' % exc)",
+  "",
+  "runtime_versions = None",
+  "def record_runtime(device, phase):",
+  "    global runtime_versions",
+  "    target = os.environ.get('DRS_RUNTIME')",
+  "    if not target:",
+  "        return",
+  "    if runtime_versions is None:",
+  "        runtime_versions = {}",
+  "        for name in ('faster-whisper', 'ctranslate2', 'av', 'huggingface-hub', 'tokenizers', 'onnxruntime'):",
+  "            try:",
+  "                runtime_versions[name] = metadata.version(name)",
+  "            except metadata.PackageNotFoundError:",
+  "                runtime_versions[name] = None",
+  "    runtime = {'python': sys.version.split()[0], 'packages': runtime_versions, 'model': os.environ['DRS_MODEL'], 'device': device, 'computeType': 'int8', 'phase': phase}",
+  "    temporary = None",
+  "    try:",
+  "        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=os.path.dirname(target), prefix='.runtime-', suffix='.json', delete=False) as f:",
+  "            temporary = f.name",
+  "            json.dump(runtime, f, ensure_ascii=False, indent=2)",
+  "        os.replace(temporary, target)",
+  "    except OSError as exc:",
+  "        print('[transcribe] runtime record unavailable: %s' % exc, file=sys.stderr)",
+  "    finally:",
+  "        if temporary and os.path.exists(temporary):",
+  "            try:",
+  "                os.unlink(temporary)",
+  "            except OSError:",
+  "                pass",
+  "    print('[transcribe] runtime python=%s faster-whisper=%s device=%s phase=%s' % (runtime['python'], runtime_versions['faster-whisper'], device, phase), file=sys.stderr)",
   "",
   "def load(device):",
   "    return WhisperModel(os.environ['DRS_MODEL'], device=device, compute_type='int8')",
@@ -224,13 +282,17 @@ const PY_RUNNER = [
   "# device 默认 cpu：ctranslate2 只要探测到 NVIDIA 显卡就会在 auto 下选 CUDA，",
   "# 而多数机器没装 cuBLAS/cuDNN（cublas64_12.dll），会在推理时硬失败（实测 RTX 3050 复现）。",
   "device = os.environ.get('DRS_DEVICE') or 'cpu'",
+  "record_runtime(device, 'starting')",
   "try:",
   "    segments, info = run(device)",
   "except Exception as exc:",
   "    if device == 'cpu':",
   "        raise",
   "    print('[transcribe] device=%s failed (%s); retrying on cpu' % (device, exc), file=sys.stderr)",
+  "    device = 'cpu'",
+  "    record_runtime(device, 'starting')",
   "    segments, info = run('cpu')",
+  "record_runtime(device, 'completed')",
   "",
   "# DRS_OUT 是本次调用独有的暂存路径；Node 校验后才原子发布到最终路径。",
   "# 先收集全部分段再落盘，中途推理失败不会留下半截文本。",
@@ -268,8 +330,23 @@ function fail(msg, code) {
 
 function runStep(cmd, cmdArgs, env, errLabel) {
   const r = spawnSync(cmd, cmdArgs, { stdio: 'inherit', env: env, shell: false });
+  checkStep(r, cmd, errLabel);
+}
+
+function checkStep(r, cmd, errLabel) {
   if (r.error) throw new Error(errLabel + ' 无法执行（' + cmd + '）：' + r.error.message);
   if (r.status !== 0) throw new Error(errLabel + ' 失败（退出码 ' + r.status + '）');
+}
+
+/** 仅 runner 导入/版本预检写出的特定状态允许安装，推理失败不能触发安装。 */
+function needsBootstrap(result, statusFile) {
+  if (result.error || (result.status !== DEPENDENCY_MISSING && result.status !== DEPENDENCY_VERSION_MISMATCH)) return false;
+  try {
+    const status = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
+    return status.code === result.status &&
+      ((status.code === DEPENDENCY_MISSING && status.reason === 'missing-dependency') ||
+       (status.code === DEPENDENCY_VERSION_MISMATCH && status.reason === 'version-mismatch'));
+  } catch (e) { return false; }
 }
 
 function main(argv) {
@@ -292,6 +369,8 @@ function main(argv) {
       uv: uv,
       uvInstallHint: uvInstallHint(c),
       pythonVersion: PY_VERSION,
+      fasterWhisperVersion: FASTER_WHISPER_VERSION,
+      runtimeRecord: path.join(root, 'runtime.json'),
       node: process.version
     }, null, 2) + '\n');
     return 0;
@@ -315,9 +394,6 @@ function main(argv) {
     fs.rmSync(outputPath, { force: true });
     if (!fs.existsSync(args.audio)) return fail('音频文件不存在：' + args.audio);
     if (!isFileAt(args.audio)) return fail('--audio 不是文件（是不是给了目录？）：' + args.audio);
-    if (uv === null) {
-      return fail('没有找到 uv。请先安装：' + uvInstallHint(c) + '（装好后重跑本脚本；或改用 options.transcribe=false / 手动提供转写文本降级）');
-    }
 
     fs.mkdirSync(root, { recursive: true });
     // 输出目录可能在别处（如 ./.tmp），提前建好，免得 python 侧报一句难懂的错
@@ -331,6 +407,7 @@ function main(argv) {
     // 1) venv：优先复用已装好的 3.12，没有才让 uv 装。
     //    镜像只用于加速；失败就换直连重试 —— 镜像挂掉不该让用户彻底装不上。
     if (!fs.existsSync(py)) {
+      if (uv === null) throw new Error('需要创建 Python 环境，但没有找到 uv。请先安装：' + uvInstallHint(c));
       process.stdout.write('[transcribe] 创建 venv（Python ' + PY_VERSION + '）：' + venvDir + '\n');
       const attempts = venvEnvAttempts(childEnv, resolveUvMirror(process.env));
       let lastErr = null;
@@ -348,14 +425,8 @@ function main(argv) {
       if (!fs.existsSync(py)) throw (lastErr || new Error('uv venv 失败：' + venvDir));
     }
 
-    // 2) faster-whisper：只在 import 失败时才装（离线/已装时零网络请求）
-    const probe = spawnSync(py, ['-c', 'import faster_whisper'], { stdio: 'ignore', shell: false });
-    if (probe.status !== 0) {
-      process.stdout.write('[transcribe] 安装 faster-whisper（清华镜像）…\n');
-      runStep(uv, ['pip', 'install', '--python', py, 'faster-whisper', '-i', PYPI_MIRROR], childEnv, 'faster-whisper 安装');
-    }
-
-    // 3) 运行时环境变量：hf-mirror + 关掉会绕开镜像并 401 的 hf-xet 后端
+    // 2) 健康环境直接运行；不另开 Python 重复 import，也不要求 uv 仍在 PATH。
+    // 运行时环境变量：hf-mirror + 关掉会绕开镜像并 401 的 hf-xet 后端
     childEnv.HF_ENDPOINT = HF_ENDPOINT;
     childEnv.HF_HOME = path.join(root, 'hf');
     childEnv.HF_HUB_DISABLE_XET = '1';
@@ -366,12 +437,26 @@ function main(argv) {
     childEnv.DRS_LANG = args.language;
     childEnv.DRS_DEVICE = args.device;
     childEnv.DRS_TIMESTAMPS = args.timestamps ? '1' : '0';
+    childEnv.DRS_FASTER_WHISPER_VERSION = FASTER_WHISPER_VERSION;
+    childEnv.DRS_RUNTIME = path.join(root, 'runtime.json');
+    const bootstrapStatus = path.join(stagingDir, 'bootstrap-status.json');
+    childEnv.DRS_BOOTSTRAP_STATUS = bootstrapStatus;
 
     const pyScript = path.join(stagingDir, 'transcribe_run.py');
     fs.writeFileSync(pyScript, PY_RUNNER, 'utf8');
 
-    // 4) 转写（首次会下载模型到 HF_HOME，之后缓存复用）
-    runStep(py, [pyScript], childEnv, '转写');
+    // 3) 转写（首次会下载模型到 HF_HOME，之后缓存复用）。
+    // 只有导入缺失/明确版本不符才允许自举并重试一次，解码/CUDA/推理失败不重装。
+    const result = spawnSync(py, [pyScript], { stdio: 'inherit', env: childEnv, shell: false });
+    if (needsBootstrap(result, bootstrapStatus)) {
+      if (uv === null) throw new Error('需要安装 faster-whisper==' + FASTER_WHISPER_VERSION + '，但没有找到 uv。请先安装：' + uvInstallHint(c));
+      process.stdout.write('[transcribe] 安装 faster-whisper==' + FASTER_WHISPER_VERSION + '（清华镜像）…\n');
+      runStep(uv, ['pip', 'install', '--python', py, 'faster-whisper==' + FASTER_WHISPER_VERSION, '-i', PYPI_MIRROR], childEnv, 'faster-whisper 安装');
+      fs.rmSync(bootstrapStatus, { force: true });
+      runStep(py, [pyScript], childEnv, '转写');
+    } else {
+      checkStep(result, py, '转写');
+    }
 
     const bytes = fs.statSync(stagingOutput).size;
     const verdict = judgeTranscript(bytes);
@@ -409,5 +494,9 @@ module.exports = {
   findUv: findUv,
   parseArgs: parseArgs,
   PY_VERSION: PY_VERSION,
+  FASTER_WHISPER_VERSION: FASTER_WHISPER_VERSION,
+  DEPENDENCY_MISSING: DEPENDENCY_MISSING,
+  DEPENDENCY_VERSION_MISMATCH: DEPENDENCY_VERSION_MISMATCH,
+  needsBootstrap: needsBootstrap,
   PY_RUNNER: PY_RUNNER
 };

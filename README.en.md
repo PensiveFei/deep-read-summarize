@@ -97,7 +97,7 @@ workflow.js      the workflow meta and assembly logic (parser inlining, schema i
 
 > The script body lives in `lib/workflow-script.txt` on purpose: this file was corrupted twice by "escaping on top of escaping". It is plain text now, so reading and editing it needs no encoding step.
 
-To change how an input type is handled, drop a parser with the same interface into `custom-parsers/`; a type with the same name overrides the built-in implementation, and you can also add a brand-new type name (e.g. `podcast`) - every registered parser is inlined into the workflow script, and both the `type` whitelist and the schema's `kind` enum follow the registry. The interface has only three fields: `name`, `types`, `buildPrompt(input, opts)`.
+To override or add a parser, use the package's `custom-parsers/` directory (included in npm packaging), or set the plugin-level `config.customParsersDir` to your own directory. This is not a workflow option. Per-profile directories remain isolated, and rebuilding skill content uses the current registry, including programmatic registrations. Parsers expose `name`, `types`, and `buildPrompt(input, opts)`; registered types are inlined into the workflow and its schema.
 
 File parsers bundle their CommonJS modules and literal relative `.js`, `.cjs`, and `.json` dependencies, preserving module constants, helpers, method shorthand, and cycles. Acorn parses JavaScript during script construction and is installed automatically by npm; it does not run in the workflow sandbox. Node built-ins, external packages, and dynamic `require`/`import` are unsupported in sandbox parsers and fail at build time. Programmatically registered functions must be self-contained; use a file parser for module closures.
 
@@ -136,7 +136,8 @@ pnpm add ./deep-read-summarize-0.3.10.tgz
 ```
 
 After installation it registers:
-- the `deep-read-summarize` workflow (meta + script)
+- the `deep_read_summarize` tool when the host provides tools and workflowEngine services; models send only input/type/options
+- the `deep-read-summarize` workflow definition (meta + script), with the existing workflow-tool route retained for older hosts
 - the `deep-read-summarize` skill (`skills/deep-read-summarize/SKILL.md`)
 - four parsers (`parsers/`) and JSON Schemas (`schemas/`)
 
@@ -150,18 +151,18 @@ After installation it registers:
 npm install deep-read-summarize
 
 # Option B: develop from source
-git clone https://github.com/<your-org>/deep-read-summarize.git
+git clone https://github.com/PensiveFei/deep-read-summarize.git
 cd deep-read-summarize
 npm ci             # install locked dependencies
 ```
 
-### 2. Verify the environment (offline, no API key needed)
+### 2. Verify installation (offline, no API key needed)
 
 ```bash
-npm test           # 35 fixture tests, all run offline
+node -e "console.log(require('deep-read-summarize').name)"
 ```
 
-Seeing `TOTAL: 35 passed, 0 failed` means the environment is ready.
+Seeing `deep-read-summarize` confirms the package loads. Source checkouts can additionally run `npm test` and `npm run test:node`; tests are not included in the npm package.
 
 ### 3. Feed a demo file with one command
 
@@ -176,9 +177,9 @@ meta: deep-read-summarize
 parsers: book, paper, video, web
 ```
 
-### 4. Real run (requires the DSH workflow tool)
+### 4. Real run (requires DSH)
 
-Pass the JSON below to DSH's workflow tool (see Usage):
+Prefer passing the JSON below directly to `deep_read_summarize`. On older hosts, use the skill's meta + script with the existing `workflow` tool:
 
 ```jsonc
 { "input": "https://arxiv.org/abs/2307.09042", "type": "paper", "options": { "maxChunks": 4, "fastMode": true } }
@@ -191,7 +192,7 @@ The workflow returns a structured result: `{ ok, kind, title, filePath, qualityP
 ---
 ## Usage
 
-Pass this JSON to DSH's workflow tool:
+The `deep_read_summarize` tool takes these parameters directly. On older hosts, use them as workflow args with the skill's meta + script:
 
 ```jsonc
 {
@@ -265,7 +266,7 @@ Video text extraction is a **unified pipeline** (the old "three tiers" are gone)
 
 `options.transcribe`: **default `true`** (auto-transcribe when no subtitles); set `false` to skip transcription (use subtitles/desc or degrade).
 
-**Transcription toolchain (identical for you and the author)**: the script **bootstraps itself** — it uses `uv` to create a **Python 3.12** environment + **Tsinghua mirror** to install `faster-whisper`, downloads the model via `HF_ENDPOINT=https://hf-mirror.com` and **caches it for reuse**; faster-whisper bundles PyAV to decode audio, so **no separate ffmpeg** is needed; **versions are pinned** (Python 3.12 / faster-whisper / uv) so the author's environment matches yours. The script is written in **Node**, so **Windows / macOS / Linux share one implementation and one command** (`node scripts/transcribe.js --audio <file> --out <txt>`). Transcription runs on **CPU** by default (`options.device`); GPU needs a CUDA runtime (cuBLAS/cuDNN), so `options.device: "auto"` is opt-in and falls back to CPU automatically. Cache location per platform: Windows `%LOCALAPPDATA%\deep-read-summarize`, macOS `~/Library/Caches/deep-read-summarize`, Linux `$XDG_CACHE_HOME/deep-read-summarize`. Python provisioning uses a mirror for speed and **falls back to a direct GitHub download when the mirror fails** (a dead mirror must not make the feature uninstallable); override it with the `DRS_UV_PYTHON_MIRROR` environment variable (empty string = never use a mirror).
+**Transcription toolchain**: `uv` provisions **Python 3.12** and installs **`faster-whisper==1.2.1`** from the Tsinghua mirror; models use `HF_ENDPOINT=https://hf-mirror.com` and the local cache. Healthy cached environments run directly without requiring uv or a separate Python import probe. Actual interpreter and dependency versions are recorded in the cache's `runtime.json`; Python patch releases, uv, and all transitive dependencies are not fully pinned. PyAV decodes audio without a separate ffmpeg. All three platforms use `node scripts/transcribe.js --audio <file> --out <txt>`. CPU is the default; `options.device: "auto"` can try a supplied CUDA runtime and falls back to CPU. Cache roots are `%LOCALAPPDATA%\deep-read-summarize` on Windows, `~/Library/Caches/deep-read-summarize` on macOS, and `$XDG_CACHE_HOME/deep-read-summarize` on Linux (falling back to `~/.cache`). Python provisioning tries a mirror and then direct GitHub; `DRS_UV_PYTHON_MIRROR` overrides it, with an empty value selecting direct downloads.
 
 > ⚠️ **The first transcription downloads the model first (small ≈ 484 MB, via hf-mirror, not GitHub) and may take a few minutes** — please be patient; **it downloads only once** on your machine, then every later transcription uses the cache and starts instantly. **Only subtitle-less videos trigger transcription** (subtitled videos use their subtitles directly — no trigger, no download).
 
@@ -317,9 +318,21 @@ Two classes:
 
 ---
 
+## Faster runs with the same quality gates
+
+- Prefer `deep_read_summarize` on supported hosts: the model submits parameters instead of reproducing the entire workflow script. Older hosts retain the existing route.
+- All known source lines remain covered. Up to three reading tasks run concurrently, and each free slot immediately starts another task. Line-balanced chunks avoid one oversized task holding up a batch.
+- Independent source review remains enabled, with duplicate full Map notes removed from review contexts. Missing line counts, failed reads, and description-only video sources cannot be fixed by rewriting the draft, so those states no longer consume full repair loops.
+- Video `textSource: "desc"` is explicitly degraded and cannot pass as a complete deep read. Bilibili `p` selects the matching CID, part title, and duration.
+- Returned `timings` reports stage durations in milliseconds. Compare the same sources, model, output size, and quality gates; scheduling simulations are not real LLM speedup measurements.
+
+This release does not lower model size, output length, or source coverage. Persistent ASR workers, transcript caching, and hierarchical review need separate quality and performance benchmarks.
+
 ## Cost
 
 Token use depends on document length, chunk count, and output size. Source review reads the document again, and each repair round adds a repair and a review call. `fastMode` reduces output sections; reducing `maxChunks` limits agent count while preserving the complete source.
+
+Programmatic `lib/cache` callers: URL trailing slashes, explicit empty queries, and fragments are preserved because they may select different content. New fingerprints are isolated from old records, so an upgrade can cause one reprocessing pass. Callers must still verify source freshness and configuration before reusing results.
 
 ---
 

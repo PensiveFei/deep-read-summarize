@@ -96,7 +96,7 @@ workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema �
 
 > 脚本正文单独放 `lib/workflow-script.txt`：这个文件曾经因为「转义套转义」被改坏过两次，现在它是普通文本，读改都不需要编码步骤。
 
-想换某个输入类型的处理方式，在 `custom-parsers/` 放一个同接口的解析器即可，同名类型会覆盖内置实现；用新类型名（如 `podcast`）也可以——注册表里的解析器会全部内联进 workflow 脚本，`type` 白名单与 schema 的 `kind` 枚举都跟着注册表走。接口只有三个字段：`name`、`types`、`buildPrompt(input, opts)`。
+想换某个输入类型的处理方式，在插件包的 `custom-parsers/` 放一个同接口的解析器即可，该目录会随 npm 包分发。也可在插件顶层 config 中指定 `customParsersDir`，使用自己的解析器目录；它不是 workflow options。相同类型会覆盖内置实现，也可新增 `podcast` 等类型。程序化注册后重新生成技能会使用最新注册表；各 profile 的专属目录相互隔离。接口为 `name`、`types`、`buildPrompt(input, opts)`。
 
 解析器的 CommonJS 模块会连同字面量相对路径的 `.js` / `.cjs` / `.json` 依赖一起打包，保留模块级常量、helper、方法简写和循环依赖。构建时使用 Acorn 解析 JavaScript；它由 npm 自动安装，不进入 workflow 沙箱。沙箱中的解析器只负责生成提示词，不支持 Node 内置模块、外部包或动态 `require` / `import`；这些依赖会在构建时明确报错。程序化注册的函数须自包含，模块闭包请使用文件解析器。
 
@@ -135,7 +135,8 @@ pnpm add ./deep-read-summarize-0.3.10.tgz
 ```
 
 安装后自动注册：
-- `deep-read-summarize` workflow（meta + script）
+- `deep_read_summarize` 工具（宿主提供 tools / workflowEngine 服务时）；模型只传 input/type/options，插件直接提交已加载的工作流
+- `deep-read-summarize` 工作流定义（meta + script；旧宿主保留通过 workflow 工具调用的方式）
 - `deep-read-summarize` 技能（`skills/deep-read-summarize/SKILL.md`）
 - 四种解析器（`parsers/`）与 JSON Schema（`schemas/`）
 
@@ -149,18 +150,18 @@ pnpm add ./deep-read-summarize-0.3.10.tgz
 npm install deep-read-summarize
 
 # 方式 B：从源码开发
-git clone https://github.com/<your-org>/deep-read-summarize.git
+git clone https://github.com/PensiveFei/deep-read-summarize.git
 cd deep-read-summarize
 npm ci             # 安装锁定依赖
 ```
 
-### 2. 验证环境（离线，不需要任何 API key）
+### 2. 验证安装（离线，不需要任何 API key）
 
 ```bash
-npm test           # 35 项 fixture 测试，全部离线跑通
+node -e "console.log(require('deep-read-summarize').name)"
 ```
 
-看到 `TOTAL: 35 passed, 0 failed` 即环境就绪。
+看到 `deep-read-summarize` 即包可正常加载。从源码开发时再运行 `npm test` 和 `npm run test:node`；测试不随 npm 包分发。
 
 ### 3. 一行命令喂入 demo 文件
 
@@ -175,9 +176,9 @@ meta: deep-read-summarize
 parsers: book, paper, video, web
 ```
 
-### 4. 真实运行（需要 DSH workflow 工具）
+### 4. 真实运行（需要 DSH）
 
-把下面的 JSON 传给 DSH 的 workflow 工具（见下节「用法」）：
+优先把下面的 JSON 直接传给 `deep_read_summarize` 工具。旧宿主使用技能提供的 meta + script，通过 `workflow` 工具执行：
 
 ```jsonc
 { "input": "https://arxiv.org/abs/2307.09042", "type": "paper", "options": { "maxChunks": 4, "fastMode": true } }
@@ -190,7 +191,7 @@ parsers: book, paper, video, web
 ---
 ## 用法
 
-把下面这段 JSON 传给 DSH 的 workflow 工具：
+`deep_read_summarize` 工具只需要以下参数；旧宿主将其作为 `workflow` 的 args，并使用技能中的 meta + script：
 
 ```jsonc
 {
@@ -264,7 +265,7 @@ parsers: book, paper, video, web
 
 `options.transcribe`：**默认 `true`**（无字幕自动转写）；设为 `false` 则跳过转写（只用字幕/desc 或降级）。
 
-**转写工具链（本机/用户一致）**：脚本**自举**——用 `uv` 建 **Python 3.12** 环境 + **清华镜像**装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并**缓存复用**；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**；**版本已锁定**（Python 3.12 / faster-whisper / uv），保证本机与用户环境一致。脚本是 **Node** 写的，**Windows / macOS / Linux 同一份实现、同一条命令**（`node scripts/transcribe.js --audio <音频> --out <txt>`）；转写默认走 **CPU**（`options.device` 默认 `cpu`），GPU 需自备 CUDA 运行库（cuBLAS/cuDNN），可设 `options.device: "auto"` 尝试，失败会自动回退 CPU。缓存目录按平台取：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`。 装 Python 时默认走镜像加速，**镜像失败会自动改用直连 GitHub 重试**（镜像挂掉不该让用户彻底装不上）；可用环境变量 `DRS_UV_PYTHON_MIRROR` 覆盖（设为空字符串 = 完全不用镜像）。
+**转写工具链**：脚本用 `uv` 创建 **Python 3.12** 环境，从清华镜像安装 **`faster-whisper==1.2.1`**，通过 `HF_ENDPOINT=https://hf-mirror.com` 下载并缓存模型。健康的缓存环境直接运行，不要求 uv 仍在 PATH，也不再启动单独的 Python 导入探测。实际解释器和依赖版本记录在缓存目录的 `runtime.json`；Python 补丁版本、uv 和传递依赖未全部锁定，不能据此声称环境逐字一致。PyAV 可直接解码音频，无需单独 ffmpeg。三平台使用同一条命令 `node scripts/transcribe.js --audio <音频> --out <txt>`，默认 CPU；`options.device: "auto"` 可尝试自备的 CUDA，失败回退 CPU。缓存目录：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`（未设置时用 `~/.cache`）。创建 Python 环境默认先用镜像，失败再直连 GitHub；`DRS_UV_PYTHON_MIRROR` 可覆盖镜像，空字符串表示直连。
 
 > ⚠️ **首次转写会先下载模型（small 约 484MB，走 hf-mirror，非 GitHub），可能需要几分钟**，请耐心等待；**本机只下这一次**，之后所有视频转写用缓存、秒开。**只有「无字幕」视频才会触发转写**（有字幕的视频直接用字幕，不触发、不下载）。
 
@@ -316,9 +317,21 @@ parsers: book, paper, video, web
 
 ---
 
+## 保持质量的提速
+
+- 支持的新宿主优先使用 `deep_read_summarize`，模型只提交参数，省去复制整份工作流脚本。旧宿主自动保留原入口。
+- 精读仍完整覆盖已知原文，最多三个任务并发；空闲槽位立即领取下一块。按行数均衡工作量，避免一个超大块拖住整批。
+- QC 继续独立读取原文；不再在每轮上下文中重复塞入全部 Map 笔记。缺总行数、精读失败或只有视频简介等问题不能靠改写笔记解决，不再浪费全文修订轮次。
+- 视频 `textSource: "desc"` 明确为降级来源，不能取得完整精读的质量通过状态。B站多 P 链接按 `p` 选择对应 CID、分 P 标题和时长。
+- 返回 `timings` 提供各阶段毫秒耗时，用同一资料、模型、篇幅和质量门槛比较；调度测试不能当成真实 LLM 加速比例。
+
+本次未改小模型档位、减少字数门槛或抽样跳过原文。常驻 ASR 模型、逐字稿缓存和分层 QC 仍需单独做质量与性能基准。
+
 ## 成本
 
 Token 用量取决于原文长度、分块数和成稿篇幅。原文核验会再次读取资料，每轮修订还会增加一次修订和一次核验调用。`fastMode` 减少输出章节；调低 `maxChunks` 限制代理数，同时保留全文覆盖。
+
+使用 `lib/cache` 的程序化调用方请注意：URL 尾斜杠、空 query 与 fragment 可能选择不同资料，现在会保留；新版指纹自动与旧版缓存隔离，升级后可能需要重新处理一次。该工具不负责证明远程内容未更新，复用前仍须由调用方确认来源与配置。
 
 ---
 

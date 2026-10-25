@@ -48,7 +48,6 @@ const schemas = require("./schemas");
 const { buildParserBundle } = require("./lib/parser-bundle");
 const { normalizeWorkflowOptions } = require("./lib/options");
 const quality = require("./lib/quality");
-const parserRegistry = parsers.registry;
 
 /**
  * 把注册表里的解析器（buildPrompt）连同其依赖的 buildFetchPrompt 内联进
@@ -61,7 +60,7 @@ const parserRegistry = parsers.registry;
  * 和这里两道关都被丢掉）。fetchSchema 同样从 schemas/index.js 注入，
  * 保持单一真相，不再和脚本里的副本各自漂移。
  */
-function buildSelfContainedScript() {
+function buildSelfContainedScript(parserRegistry = parsers.registry) {
   const parserNames = Object.keys(parserRegistry.parsers);
   // kind 的合法取值跟着解析器表走（含自定义类型），不再写死四个内置类型。
   const fetchSchema = JSON.parse(JSON.stringify(schemas.fetchResultSchema));
@@ -78,12 +77,12 @@ function buildSelfContainedScript() {
   if (!RAW_SCRIPT.includes(marker)) {
     throw new Error("workflow script marker not found: " + marker);
   }
-  return 'const normalizeWorkflowOptions = ' + normalizeWorkflowOptions.toString() + ';\n' +
+  const runtimePaths = { transcribeScript: fs.realpathSync(path.join(__dirname, 'scripts', 'transcribe.js')) };
+  return 'const __runtimePaths = ' + JSON.stringify(runtimePaths) + ';\n' +
+    'const normalizeWorkflowOptions = ' + normalizeWorkflowOptions.toString() + ';\n' +
     'const __quality = { checkNoteStructure: ' + quality.checkNoteStructure.toString() +
     ', validateSourceCheck: ' + quality.validateSourceCheck.toString() + ' };\n' +
     RAW_SCRIPT.replace(marker, impl + "\nconst parsers = args._parsers || __parsers;");
 }
 
-const script = buildSelfContainedScript();
-
-module.exports = { meta, script, parsers, buildSelfContainedScript };
+module.exports = { meta, get script() { return buildSelfContainedScript(); }, parsers, buildSelfContainedScript };

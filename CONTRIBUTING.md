@@ -12,7 +12,7 @@ npm run lint       # node --check on all .js files
 
 ## Adding a Parser Plugin
 
-1. Create `parsers/<name>.js` (or `custom-parsers/<name>.js` for personal overrides)
+1. Create `parsers/<name>.js`, use the package's `custom-parsers/<name>.js`, or configure plugin-level `customParsersDir` for a separate directory
 2. Implement the interface: `{ name, types, buildPrompt(input, opts) }`
 3. Add a fixture test in `tests/`
 4. Run `npm test`

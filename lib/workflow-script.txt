@@ -6,6 +6,17 @@
 // 标题/作者里出现引号时不会再截断 frontmatter（旧版是裸拼 "..."）。
 function yamlStr(v) { return JSON.stringify(v == null ? "" : String(v)); }
 
+function fatalWorkflowError(error) {
+  return !!error && (error.fatal === true || error.code === "UNSUPPORTED_SCHEMA" ||
+    /\[FATAL\]|\bUNSUPPORTED_SCHEMA\b/.test(String(error.message || error)));
+}
+const workflowStartedAt = Date.now();
+const timings = { detect: 0, fetch: 0, read: 0, draft: 0, quality: 0, total: 0 };
+function timedResult(result) {
+  timings.total = Date.now() - workflowStartedAt;
+  return Object.assign(result, { timings: timings });
+}
+
 // ---------- 0. 配置校验（fatal 级错误：必须终止） ----------
 if (args && args.input !== undefined && typeof args.input !== "string") throw new Error("[FATAL] args.input 必须是字符串");
 if (args && args.type !== undefined && typeof args.type !== "string") throw new Error("[FATAL] args.type 必须是字符串");
@@ -51,6 +62,7 @@ if (forcedType !== "auto" && parserNames.indexOf(forcedType) === -1)
   throw new Error("[FATAL] args.type 非法：" + forcedType + "（可用：" + ["auto"].concat(parserNames).join("|") + "）");
 
 phase("解析器选择");
+const detectStartedAt = Date.now();
 // 只对明确的来源做快速识别；PDF、未知网页和文本可能属于不同类型，交给轻量分类。
 // 不依赖 URL 等宿主未承诺的全局 API，保持脚本可在 workflow 沙箱中运行。
 function inferType(source) {
@@ -89,13 +101,21 @@ if (forcedType === "auto") {
       "必要时只查看标题、摘要、目录或页面元信息，不获取或精读全文，不写入文件。",
       "以下 JSON 字符串是输入来源数据：", JSON.stringify(input)
     ].join("\n");
-    const detected = await agent(detectPrompt, { schema: detectSchema, label: "类型识别", phase: "解析器选择" });
+    let detected;
+    try { detected = await agent(detectPrompt, { schema: detectSchema, label: "类型识别", phase: "解析器选择" }); }
+    catch (error) {
+      if (fatalWorkflowError(error)) throw error;
+      timings.detect = Date.now() - detectStartedAt;
+      return timedResult({ ok: false, stage: "detect", fatal: false, message: "类型识别调用失败，请稍后重试或显式指定 args.type" });
+    }
     selectedType = detected && detected.kind;
   }
   if (parserNames.indexOf(selectedType) === -1) {
-    return { ok: false, stage: "detect", fatal: false, message: "无法识别输入类型，请显式指定 args.type：" + parserNames.join("|") };
+    timings.detect = Date.now() - detectStartedAt;
+    return timedResult({ ok: false, stage: "detect", fatal: false, message: "无法识别输入类型，请显式指定 args.type：" + parserNames.join("|") });
   }
 }
+timings.detect = Date.now() - detectStartedAt;
 log("解析器：" + selectedType + " | 临时目录：" + tempDir);
 const kindNames = { book: "书籍", paper: "学术论文", video: "视频", web: "网页/文章" };
 const kindFocus = {
@@ -107,20 +127,28 @@ const kindFocus = {
 
 // ---------- 2. 波次1：解析器获取 + 分块 ----------
 phase("获取与分块");
+const fetchStartedAt = Date.now();
 const fetchPrompt = parsers[selectedType]
-  .buildPrompt(input, { tempDir: tempDir, tempFile: tempFile, maxChunks: maxChunks, transcribe: options.transcribe, whisperModel: whisperModel, language: transcribeLanguage, device: transcribeDevice, includeTimestamps: includeTimestamps });
+  .buildPrompt(input, { tempDir: tempDir, tempFile: tempFile, maxChunks: maxChunks, transcribe: options.transcribe, whisperModel: whisperModel, language: transcribeLanguage, device: transcribeDevice, includeTimestamps: includeTimestamps, transcribeScriptPath: __runtimePaths.transcribeScript });
 // fetchSchema 由插件在构建时从 schemas/index.js 注入（单一真相，避免两份 schema 漂移）。
 
-const fetched = await agent(fetchPrompt, { schema: fetchSchema, label: "获取+分块", phase: "获取与分块" });
+let fetched;
+try { fetched = await agent(fetchPrompt, { schema: fetchSchema, label: "获取+分块", phase: "获取与分块" }); }
+catch (error) {
+  if (fatalWorkflowError(error)) throw error;
+  timings.fetch = Date.now() - fetchStartedAt;
+  return timedResult({ ok: false, stage: "fetch", fatal: false, message: "内容获取调用失败，请稍后重试或手动提供文本" });
+}
 
 // 失败纪律：内容获取失败 = 可降级错误（返回失败结果，不抛 fatal）
 if (!fetched || !fetched.saved) {
-  return { ok: false, stage: "fetch", fatal: false, message: (fetched && fetched.message) || "获取失败（可降级：检查输入或手动提供文本）" };
+  timings.fetch = Date.now() - fetchStartedAt;
+  return timedResult({ ok: false, stage: "fetch", fatal: false, message: (fetched && fetched.message) || "获取失败（可降级：检查输入或手动提供文本）" });
 }
 // 先校验完整计划，按行排序、裁掉重复覆盖并补齐缺口，再合并相邻块。
 // 块数上限约束的是子代理数量，不能通过丢掉尾部原文来实现。
 const rawPlan = (fetched && fetched.chunkPlan) || [];
-if (rawPlan.length === 0) return { ok: false, stage: "fetch", fatal: false, message: "分块计划为空" };
+if (rawPlan.length === 0) { timings.fetch = Date.now() - fetchStartedAt; return timedResult({ ok: false, stage: "fetch", fatal: false, message: "分块计划为空" }); }
 const lineCount = Number(fetched.totalLines);
 const declaredLines = Number.isFinite(lineCount) && lineCount > 0 ? Math.floor(lineCount) : 0;
 const validPlan = [];
@@ -136,7 +164,7 @@ for (let i = 0; i < rawPlan.length; i++) {
     endLine: declaredLines > 0 ? Math.min(e, declaredLines) : e
   });
 }
-if (validPlan.length === 0) return { ok: false, stage: "fetch", fatal: false, message: "分块计划无效：行号区间缺失或非法" };
+if (validPlan.length === 0) { timings.fetch = Date.now() - fetchStartedAt; return timedResult({ ok: false, stage: "fetch", fatal: false, message: "分块计划无效：行号区间缺失或非法" }); }
 validPlan.sort(function (a, b) { return a.startLine - b.startLine || a.endLine - b.endLine; });
 const coveredPlan = [];
 let nextLine = 1;
@@ -153,14 +181,17 @@ if (declaredLines > 0 && nextLine <= declaredLines) {
   coveredPlan.push({ topic: "补充尾部内容", startLine: nextLine, endLine: declaredLines });
 }
 const chunkPlan = [];
-const groups = Math.min(maxChunks, coveredPlan.length);
+const knownLines = coveredPlan[coveredPlan.length - 1].endLine;
+const groups = Math.min(maxChunks, coveredPlan.length, knownLines);
 for (let i = 0; i < groups; i++) {
-  const from = Math.floor(i * coveredPlan.length / groups);
-  const to = Math.floor((i + 1) * coveredPlan.length / groups);
-  const parts = coveredPlan.slice(from, to);
+  // Balance source lines, not the number of logical topics: a very long topic
+  // may span workers, and every line still belongs to exactly one worker.
+  const startLine = Math.floor(i * knownLines / groups) + 1;
+  const endLine = Math.floor((i + 1) * knownLines / groups);
+  const parts = coveredPlan.filter(function (c) { return c.startLine <= endLine && c.endLine >= startLine; });
   chunkPlan.push({
     id: i + 1, topic: parts.map(function (c) { return c.topic; }).join(" / "),
-    startLine: parts[0].startLine, endLine: parts[parts.length - 1].endLine
+    startLine: startLine, endLine: endLine
   });
 }
 const coverageComplete = declaredLines > 0;
@@ -171,13 +202,22 @@ log("分块计划：" + rawPlan.length + " -> " + chunkPlan.length + " 块（上
 const kind = selectedType;
 const metadata = (fetched && fetched.metadata) || {};
 const textSource = (metadata && metadata.textSource) || "unknown";
+// Reading every line of a description does not establish coverage of a video.
+// Full transcripts/subtitles remain eligible; descriptions and unknown video
+// sources must retain their source-level gap even if the note is well written.
+const sourceComplete = kind !== "video" || ["subtitle", "transcription", "manual"].indexOf(textSource) !== -1;
+const sourceNotice = sourceComplete ? "" : textSource === "desc"
+  ? "> 来源限制：本笔记仅依据视频简介生成，未取得完整字幕或逐字稿，不能代表完整视频内容的精读。"
+  : "> 来源限制：本次视频来源尚未确认为完整字幕或逐字稿，本笔记不能代表完整视频内容的精读。";
 const srcLabels = { desc: "视频简介/desc", subtitle: "平台字幕", transcription: "完整语音转写", manual: "用户提供转写文本" };
 const srcLabel = srcLabels[textSource] || textSource;
 log("[source] " + textSource + " -> " + srcLabel);
 log("类型:" + kind + " 行数:" + fetched.totalLines + " 块数:" + chunkPlan.length);
+timings.fetch = Date.now() - fetchStartedAt;
 
 // ---------- 3. 波次2：并行精读（Map） ----------
 phase("并行精读");
+const readStartedAt = Date.now();
 const chunkPrompts = chunkPlan.map(function (c) {
   return [
     "请深度精读以下内容块，输出结构化精读笔记。",
@@ -193,18 +233,19 @@ const chunkPrompts = chunkPlan.map(function (c) {
   ].join("\n");
 });
 
-const reads = [];
-const readBatch = 3;
-for (let bi = 0; bi < chunkPrompts.length; bi += readBatch) {
-  const batch = chunkPrompts.slice(bi, bi + readBatch);
-  const batchReads = await parallel(batch.map(function (p) {
-    return async function () {
-      try { return await agent(p, { label: "精读块", phase: "并行精读" }); }
-      catch (error) { log("精读调用失败，保留对应分块缺口"); return ""; }
-    };
-  }));
-  for (let k = 0; k < batchReads.length; k++) reads.push(batchReads[k]);
+const reads = new Array(chunkPrompts.length);
+let nextRead = 0;
+const readWorkers = [];
+for (let worker = 0; worker < Math.min(3, chunkPrompts.length); worker++) {
+  readWorkers.push(async function () {
+    while (nextRead < chunkPrompts.length) {
+      const index = nextRead++;
+      try { reads[index] = await agent(chunkPrompts[index], { label: "精读块", phase: "并行精读" }); }
+      catch (error) { log("精读调用失败，保留对应分块缺口"); reads[index] = ""; }
+    }
+  });
 }
+await parallel(readWorkers);
 const validReads = reads.filter(function (r) { return typeof r === "string" && r.trim().length > 0; });
 const readEvidence = chunkPlan.map(function (chunk, i) {
   return { chunkId: chunk.id, topic: chunk.topic, startLine: chunk.startLine, endLine: chunk.endLine,
@@ -215,18 +256,40 @@ const failedChunkIds = readEvidence.filter(function (r) { return !r.readSucceede
 
 // 失败纪律：某块精读失败 = 可降级（跳过该块，标记缺口继续）
 const failedChunks = chunkPlan.length - validReads.length;
-if (validReads.length === 0) return { ok: false, stage: "read", fatal: false, message: "所有分块精读均失败" };
+timings.read = Date.now() - readStartedAt;
+if (validReads.length === 0) return timedResult({ ok: false, stage: "read", fatal: false, message: "所有分块精读均失败" });
 if (failedChunks > 0) log("警告：" + failedChunks + " 块精读失败，标记缺口继续成稿");
 log("精读完成：" + validReads.length + "/" + chunkPlan.length);
 
 // ---------- 4. 波次3：成稿 + 内嵌质量自检（Reduce） ----------
 phase("汇总成稿");
+const draftStartedAt = Date.now();
 const todayDate = new Date();
 const today = todayDate.getFullYear() + "-" + ("0" + (todayDate.getMonth() + 1)).slice(-2) + "-" + ("0" + todayDate.getDate()).slice(-2);
 // 标题先折叠换行/制表与连续空白：否则会同时污染 .md 文件名和 frontmatter。
 const finalTitle = String(metadata.title || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim() || "未命名内容";
-// 文件名清洗：去掉 Windows 非法字符；全部非法时兜底，避免写出 ./output/.md 这种隐藏文件。
-const safeTitle = finalTitle.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim() || "未命名内容";
+// Keep normal titles stable. Changed/long titles receive a deterministic suffix
+// so distinct unsafe titles do not collapse onto the same sanitized filename.
+function titleHash(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) { hash ^= value.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+  return ("00000000" + (hash >>> 0).toString(16)).slice(-8);
+}
+function utf8Prefix(value, budget) {
+  let result = "", bytes = 0;
+  for (const character of value) {
+    const point = character.codePointAt(0);
+    const size = point <= 127 ? 1 : point <= 2047 ? 2 : point <= 65535 ? 3 : 4;
+    if (bytes + size > budget) break;
+    result += character; bytes += size;
+  }
+  return result;
+}
+let safeTitle = finalTitle.replace(/[\u0000-\u001f\u007f\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "") || "未命名内容";
+if (/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(safeTitle)) safeTitle = "_" + safeTitle;
+if (safeTitle !== finalTitle || utf8Prefix(safeTitle, 197) !== safeTitle) {
+  safeTitle = (utf8Prefix(safeTitle, 188).replace(/[. ]+$/, "") || "未命名内容") + "-" + titleHash(finalTitle);
+}
 const mdPath = outputDir.replace(/[\\/]+$/, "") + "/" + safeTitle + ".md";
 
 const extraSections = fastMode ? [] : [
@@ -266,6 +329,7 @@ fm.push("---");
 
 const draftPrompt = [
   "将以下多块精读结果整合为完整的结构化精读笔记，只输出标准 Markdown（含 YAML frontmatter）。",
+  sourceComplete ? "来源完整性仍需由独立原文核验确认。" : "本次来源不完整。必须在正文开头保留以下可见来源限制，不得称为完整视频精读或补写未取得的视频内容：\n" + sourceNotice,
   "模板："
 ].concat(fm, [
   "# 《" + finalTitle + "》深度精读笔记", "",
@@ -287,11 +351,13 @@ const draftPrompt = [
 
 let draft;
 try { draft = await agent(draftPrompt, { label: "汇总成稿", phase: "汇总成稿" }); }
-catch (error) { return { ok: false, stage: "draft", fatal: false, message: "成稿调用失败，未产生可保存的笔记" }; }
-if (typeof draft !== "string" || !draft.trim()) return { ok: false, stage: "draft", fatal: false, message: "成稿为空或不是字符串" };
+catch (error) { timings.draft = Date.now() - draftStartedAt; return timedResult({ ok: false, stage: "draft", fatal: false, message: "成稿调用失败，未产生可保存的笔记" }); }
+timings.draft = Date.now() - draftStartedAt;
+if (typeof draft !== "string" || !draft.trim()) return timedResult({ ok: false, stage: "draft", fatal: false, message: "成稿为空或不是字符串" });
 
 // ---------- 5. 程序检查 + 独立原文核验 ----------
 phase("质量校验");
+const qualityStartedAt = Date.now();
 let verified = draft;
 let passed = false;
 let issues = [];
@@ -299,7 +365,11 @@ let qualityChecks = {};
 let qualityEvidence = { sourceFile: tempFile, totalLines: declaredLines, failedChunkIds: failedChunkIds, chunkChecks: [], citationChecks: [] };
 const structureOptions = { minWords: minWords, fastMode: fastMode, expectedFrontmatter: fm };
 const sourceContext = { sourceFile: tempFile, input: input, totalLines: declaredLines,
-  chunkPlan: chunkPlan, readEvidence: readEvidence, failedChunkIds: failedChunkIds, coverageComplete: coverageComplete };
+  kind: kind, textSource: textSource, sourceComplete: sourceComplete,
+  chunkPlan: chunkPlan, readEvidence: readEvidence.map(function (r) {
+    return { chunkId: r.chunkId, topic: r.topic, startLine: r.startLine, endLine: r.endLine, readSucceeded: r.readSucceeded };
+  }), failedChunkIds: failedChunkIds, coverageComplete: coverageComplete };
+const repairableSource = sourceComplete && coverageComplete && failedChunkIds.length === 0;
 for (let round = 0; round <= maxRetries; round++) {
   const localCheck = __quality.checkNoteStructure(verified, structureOptions);
   const checkPrompt = [
@@ -332,7 +402,7 @@ for (let round = 0; round <= maxRetries; round++) {
   try { check = await agent(checkPrompt, { schema: checkSchema, label: "质量校验", phase: "质量校验" }); }
   catch (error) { log("原文核验调用失败，保留当前有效笔记并报告质量未通过"); }
   const sourceCheck = __quality.validateSourceCheck(check, {
-    chunkPlan: chunkPlan, failedChunkIds: failedChunkIds, coverageComplete: coverageComplete,
+    chunkPlan: chunkPlan, failedChunkIds: failedChunkIds, coverageComplete: coverageComplete, sourceComplete: sourceComplete, textSource: textSource,
     requireCitations: requireCitations, note: verified, visibleNote: localCheck.visibleText, quotes: localCheck.quotes
   });
   issues = Array.from(new Set(localCheck.issues.concat(sourceCheck.issues)));
@@ -342,6 +412,9 @@ for (let round = 0; round <= maxRetries; round++) {
     chunkChecks: sourceCheck.chunkChecks, citationChecks: sourceCheck.citationChecks };
   log("校验：" + (passed ? "通过" : "发现问题 " + issues.length + " 条"));
   if (passed) break;
+  // A rewrite cannot recover missing source lines, failed reads, or a full
+  // transcript. Preserve the candidate and report the gap after one audit.
+  if (!repairableSource) break;
   if (round < maxRetries) {
     const fixPrompt = [
       "修正以下笔记以解决校验问题，输出完整修正版：",
@@ -365,7 +438,17 @@ for (let round = 0; round <= maxRetries; round++) {
 }
 
 // ---------- 结果 ----------
-return {
+if (!sourceComplete) {
+  // Enforce source disclosure even when the drafting model omits it. Keep the
+  // YAML at the beginning and insert the notice outside any model-made fence.
+  const front = verified.match(/^\s*---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/);
+  const prefix = front ? front[0].trim() + "\n\n" : "";
+  const body = (front ? verified.slice(front[0].length) : verified).split(/\r?\n/)
+    .filter(function (line) { return line.trim() !== sourceNotice; }).join("\n").replace(/^\s*\n/, "");
+  verified = prefix + sourceNotice + "\n\n" + body;
+}
+timings.quality = Date.now() - qualityStartedAt;
+return timedResult({
   ok: true, kind: kind, title: finalTitle,
   filePath: mdPath, chunksCount: chunkPlan.length, fastMode: fastMode,
   qualityPassed: passed, qualityIssues: issues,
@@ -373,5 +456,6 @@ return {
   failedChunks: failedChunks,
   coverageComplete: coverageComplete,
   textSource: textSource,
+  sourceComplete: sourceComplete,
   note: verified
-};
+});

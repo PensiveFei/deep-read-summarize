@@ -16,6 +16,7 @@
     "index.js",
     "workflow.js",
     "parsers",
+    "custom-parsers",
     "schemas",
     "lib",
     "skills",

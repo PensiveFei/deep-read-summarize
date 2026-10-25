@@ -14,6 +14,7 @@
 # = warning + ignore, never a startup failure) and folds them into the default
 # args carried by the skill, so they become this profile's defaults.
 #   config:
+#     customParsersDir: './custom-parsers' # optional plugin-level parser directory (not a workflow option)
 #     outputDir: './output'      # where notes are written (default: ./output)
 #     tempDir: './.tmp'          # temp files for chunked content (default: ./.tmp)
 #     minWords: 2500             # minimum output length (default: 2500)
