@@ -406,23 +406,26 @@ function main(argv) {
 
     // 1) venv：优先复用已装好的 3.12，没有才让 uv 装。
     //    镜像只用于加速；失败就换直连重试 —— 镜像挂掉不该让用户彻底装不上。
-    if (!fs.existsSync(py)) {
+    if (!isFileAt(py)) {
       if (uv === null) throw new Error('需要创建 Python 环境，但没有找到 uv。请先安装：' + uvInstallHint(c));
       process.stdout.write('[transcribe] 创建 venv（Python ' + PY_VERSION + '）：' + venvDir + '\n');
       const attempts = venvEnvAttempts(childEnv, resolveUvMirror(process.env));
       let lastErr = null;
+      let created = false;
       for (let i = 0; i < attempts.length; i++) {
         try {
           runStep(uv, ['venv', '--python', PY_VERSION, venvDir], attempts[i].env, 'uv venv');
+          if (!isFileAt(py)) throw new Error('uv venv 未生成 Python 解释器文件：' + py);
+          created = true;
         } catch (e) { lastErr = e; }
-        if (fs.existsSync(py)) break;
+        if (created) break;
         // 失败的尝试可能留下半个 venv 目录，重试前先清掉
         try { fs.rmSync(venvDir, { recursive: true, force: true }); } catch (e) { /* 清不掉就让下一次尝试自己报错 */ }
         if (i + 1 < attempts.length) {
           process.stderr.write('[transcribe] 用 ' + attempts[i].label + ' 创建 venv 失败，改用 ' + attempts[i + 1].label + ' 重试…\n');
         }
       }
-      if (!fs.existsSync(py)) throw (lastErr || new Error('uv venv 失败：' + venvDir));
+      if (!created) throw (lastErr || new Error('uv venv 失败：' + venvDir));
     }
 
     // 2) 健康环境直接运行；不另开 Python 重复 import，也不要求 uv 仍在 PATH。

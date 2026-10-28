@@ -36,6 +36,7 @@ function harness(t, options) {
   fs.writeFileSync(out, 'stale output');
   const calls = [], stderr = [], stdout = [];
   let runs = 0;
+  let venvRuns = 0;
   const mod = { exports: {} };
   const fakeProcess = {
     platform: process.platform, version: process.version, env: env,
@@ -50,6 +51,7 @@ function harness(t, options) {
       return { spawnSync: function (cmd, args, childOpts) {
         calls.push({ cmd: cmd, args: args, env: childOpts.env });
         if (args[0] === 'venv') {
+          if (opts.createVenv) return opts.createVenv(venvRuns++, childOpts.env, py);
           fs.mkdirSync(path.dirname(py), { recursive: true });
           fs.writeFileSync(py, 'new mock interpreter');
           return { status: 0 };
@@ -171,6 +173,42 @@ test('a fresh environment bootstraps Python then dependencies without an import 
   assert.deepEqual(h.calls.map(function (c) {
     return c.args[0] === 'venv' || c.args[0] === 'pip' ? c.args[0] : 'runner';
   }), ['venv', 'runner', 'pip', 'runner']);
+});
+
+test('a failed venv attempt cannot reuse the partial interpreter it left behind', function (t) {
+  const h = harness(t, { uv: true, noPython: true, createVenv: function (index, env, py) {
+    if (index > 0) {
+      assert.equal(fs.existsSync(py), false, 'partial environment must be removed before fallback');
+      assert.equal(env.UV_PYTHON_INSTALL_MIRROR, undefined);
+    }
+    fs.mkdirSync(path.dirname(py), { recursive: true });
+    fs.writeFileSync(py, index === 0 ? 'partial interpreter' : 'complete interpreter');
+    return { status: index === 0 ? 1 : 0 };
+  } });
+  assert.equal(h.main(), 0);
+  assert.deepEqual(h.calls.map(function (c) { return c.args[0] === 'venv' ? 'venv' : 'runner'; }),
+    ['venv', 'venv', 'runner']);
+});
+
+test('failed venv attempts never launch a leftover interpreter or publish output', function (t) {
+  const h = harness(t, { uv: true, noPython: true, createVenv: function (index, env, py) {
+    fs.mkdirSync(path.dirname(py), { recursive: true });
+    fs.writeFileSync(py, 'partial interpreter');
+    return { status: 1 };
+  } });
+  assert.equal(h.main(), 1);
+  assert.ok(h.calls.every(function (c) { return c.args[0] === 'venv'; }));
+  assert.equal(fs.existsSync(h.out), false);
+});
+
+test('successful venv exit without an interpreter file still fails bootstrap', function (t) {
+  const h = harness(t, { uv: true, noPython: true, createVenv: function (index, env, py) {
+    fs.mkdirSync(py, { recursive: true });
+    return { status: 0 };
+  } });
+  assert.equal(h.main(), 1);
+  assert.ok(h.calls.every(function (c) { return c.args[0] === 'venv'; }));
+  assert.equal(fs.existsSync(h.out), false);
 });
 
 function findPython() {
