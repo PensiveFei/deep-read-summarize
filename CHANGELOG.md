@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+
+- **工作流致命错误**：精读、成稿、原文核验和修订阶段统一传播 `[FATAL]`、`UNSUPPORTED_SCHEMA` 与 `fatal: true` 错误；精读遇到致命错误后停止派发剩余分块。普通临时错误仍保留原有降级行为。
+- **转写环境初始化**：只有 `uv venv` 成功退出且实际生成 Python 解释器文件才继续转写；失败时留下的残缺环境不能跳过直连重试或被误用。
+- **自定义解析器打包**：按 JavaScript 作用域规则分别处理 `switch` 判别式与 `case` 块，避免局部 `require` 隐藏判别式中的模块导入，或局部变量掩盖不可用的宿主 API。
+
 ## [0.4.0] — 2026-10-25
 
 保留完整精读与独立原文核验，减少脚本搬运、并发空等和无效修订，并修复来源质量判断与视频分P等问题。

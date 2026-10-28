@@ -133,6 +133,32 @@ test('B05 AST scope analysis preserves local bindings named process and require'
   assert.equal(vm.runInNewContext(buildParserBundle(fileRegistry(root)) + '\n__parsers.podcast.buildPrompt();'), 'LOCAL:BOUND');
 });
 
+test('switch discriminant imports are outside case-local require bindings', function (t) {
+  const root = fixtures(t, {
+    'parser.js': [
+      "let prefix;",
+      "switch (require('./helper').kind) {",
+      "  case 'podcast':",
+      "    const require = value => 'local:' + value;",
+      "    prefix = require('prompt:');",
+      "    break;",
+      "}",
+      "module.exports = { buildPrompt(input) { return prefix + input; } };"
+    ].join('\n'),
+    'helper.js': "exports.kind = 'podcast';"
+  });
+  const expected = require(path.join(root, 'parser.js')).buildPrompt('input');
+  assert.equal(expected, 'local:prompt:input');
+  assert.equal(vm.runInNewContext(buildParserBundle(fileRegistry(root)) + "\n__parsers.podcast.buildPrompt('input');"), expected);
+});
+
+test('case-local bindings cannot conceal unavailable globals in a switch discriminant', function (t) {
+  const root = fixtures(t, {
+    'parser.js': "switch (process.platform) { case 'local': const process = {}; } module.exports = { buildPrompt() { return 'x'; } };"
+  });
+  assert.throws(function () { buildParserBundle(fileRegistry(root)); }, /unavailable workflow global process/);
+});
+
 test('B05 generated import bindings cannot collide with helper constants', function (t) {
   const root = fixtures(t, {
     'parser.js': "const __drsLocalImport = 'LOCAL:'; const helper = require /* comment */ ('./helper'); module.exports = { buildPrompt() { return __drsLocalImport + helper.prefix; } };",

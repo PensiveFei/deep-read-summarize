@@ -235,13 +235,17 @@ const chunkPrompts = chunkPlan.map(function (c) {
 
 const reads = new Array(chunkPrompts.length);
 let nextRead = 0;
+let stopReading = false;
 const readWorkers = [];
 for (let worker = 0; worker < Math.min(3, chunkPrompts.length); worker++) {
   readWorkers.push(async function () {
-    while (nextRead < chunkPrompts.length) {
+    while (!stopReading && nextRead < chunkPrompts.length) {
       const index = nextRead++;
       try { reads[index] = await agent(chunkPrompts[index], { label: "精读块", phase: "并行精读" }); }
-      catch (error) { log("精读调用失败，保留对应分块缺口"); reads[index] = ""; }
+      catch (error) {
+        if (fatalWorkflowError(error)) { stopReading = true; throw error; }
+        log("精读调用失败，保留对应分块缺口"); reads[index] = "";
+      }
     }
   });
 }
@@ -351,7 +355,11 @@ const draftPrompt = [
 
 let draft;
 try { draft = await agent(draftPrompt, { label: "汇总成稿", phase: "汇总成稿" }); }
-catch (error) { timings.draft = Date.now() - draftStartedAt; return timedResult({ ok: false, stage: "draft", fatal: false, message: "成稿调用失败，未产生可保存的笔记" }); }
+catch (error) {
+  if (fatalWorkflowError(error)) throw error;
+  timings.draft = Date.now() - draftStartedAt;
+  return timedResult({ ok: false, stage: "draft", fatal: false, message: "成稿调用失败，未产生可保存的笔记" });
+}
 timings.draft = Date.now() - draftStartedAt;
 if (typeof draft !== "string" || !draft.trim()) return timedResult({ ok: false, stage: "draft", fatal: false, message: "成稿为空或不是字符串" });
 
@@ -400,7 +408,10 @@ for (let round = 0; round <= maxRetries; round++) {
   };
   let check = null;
   try { check = await agent(checkPrompt, { schema: checkSchema, label: "质量校验", phase: "质量校验" }); }
-  catch (error) { log("原文核验调用失败，保留当前有效笔记并报告质量未通过"); }
+  catch (error) {
+    if (fatalWorkflowError(error)) throw error;
+    log("原文核验调用失败，保留当前有效笔记并报告质量未通过");
+  }
   const sourceCheck = __quality.validateSourceCheck(check, {
     chunkPlan: chunkPlan, failedChunkIds: failedChunkIds, coverageComplete: coverageComplete, sourceComplete: sourceComplete, textSource: textSource,
     requireCitations: requireCitations, note: verified, visibleNote: localCheck.visibleText, quotes: localCheck.quotes
@@ -425,7 +436,10 @@ for (let round = 0; round <= maxRetries; round++) {
     ].join("\n");
     let repaired;
     try { repaired = await agent(fixPrompt, { label: "修正笔记", phase: "质量校验" }); }
-    catch (error) { issues.push("修正调用失败，已保留上一份有效笔记"); break; }
+    catch (error) {
+      if (fatalWorkflowError(error)) throw error;
+      issues.push("修正调用失败，已保留上一份有效笔记"); break;
+    }
     if (typeof repaired !== "string" || !repaired.trim()) {
       issues.push("修正结果为空或不是字符串，已保留上一份有效笔记"); break;
     }

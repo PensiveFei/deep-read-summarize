@@ -133,6 +133,59 @@ test('audit: detection and fetching degrade transient failures while preserving 
   }
 });
 
+test('audit: Map, draft, source audit and repair propagate fatal host errors unchanged', async () => {
+  for (const label of ['精读块', '汇总成稿', '质量校验', '修正笔记']) {
+    for (const error of [
+      new Error('[FATAL] invalid host configuration'),
+      Object.assign(new Error('unsupported schema'), { code: 'UNSUPPORTED_SCHEMA' }),
+      Object.assign(new Error('fatal host failure'), { fatal: true })
+    ]) {
+      let reached = false;
+      await assert.rejects(run({ maxRetries: 1, onAgent: async (prompt, options) => {
+        if (options.label === label) { reached = true; throw error; }
+        // A failed audit is needed to exercise the repair call.
+        if (label === '修正笔记' && options.label === '质量校验') return null;
+      } }), observed => observed === error, label);
+      assert.equal(reached, true, label + ' must be exercised');
+    }
+  }
+});
+
+test('audit: recoverable Map, draft, source audit and repair errors still degrade safely', async () => {
+  for (const label of ['精读块', '汇总成稿', '质量校验', '修正笔记']) {
+    let reached = false;
+    const { result } = await run({ maxRetries: 1, onAgent: async (prompt, options) => {
+      if (options.label === label) { reached = true; throw new Error('temporary upstream failure'); }
+      if (label === '修正笔记' && options.label === '质量校验') return null;
+    } });
+    assert.equal(reached, true, label + ' must be exercised');
+    if (label === '精读块' || label === '汇总成稿') {
+      assert.equal(result.ok, false, label);
+      assert.equal(result.stage, label === '精读块' ? 'read' : 'draft');
+      assert.equal(result.fatal, false);
+    } else {
+      assert.equal(result.ok, true, label);
+      assert.equal(result.qualityPassed, false, label);
+      assert.ok(result.note.includes('## 4. 引用'), 'the draft must be preserved');
+    }
+  }
+});
+
+test('audit: a fatal Map error stops workers from dispatching queued chunks', async () => {
+  const error = Object.assign(new Error('fatal host failure'), { fatal: true });
+  const reads = [];
+  const plan = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, topic: 'part ' + index,
+    startLine: index * 10 + 1, endLine: (index + 1) * 10 }));
+  await assert.rejects(run({ plan, maxChunks: 6, onAgent: async (prompt, options) => {
+    if (options.label !== '精读块') return;
+    const startLine = Number(prompt.match(/offset=(\d+)/)[1]);
+    reads.push(startLine);
+    if (startLine === 1) throw error;
+    return 'read note';
+  } }), observed => observed === error);
+  assert.deepEqual(reads, [1, 11, 21], 'only already-started reads may finish');
+});
+
 test('audit: a free Map slot starts the next chunk before the slow first chunk completes', { timeout: 2000 }, async () => {
   let releaseFirst;
   const first = new Promise(resolve => { releaseFirst = resolve; });
