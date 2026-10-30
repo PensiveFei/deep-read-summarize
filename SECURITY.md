@@ -6,7 +6,7 @@ Please do **not** open a public issue for security vulnerabilities.
 
 To report a vulnerability privately:
 
-1. Open a [private security advisory](https://github.com/<your-org>/deep-read-summarize/security/advisories/new) (if available), or
+1. Open a [private security advisory](https://github.com/PensiveFei/deep-read-summarize/security/advisories/new) (if available), or
 2. Email the maintainer (see repository profile for contact).
 
 ## What to include

@@ -1,0 +1,9 @@
+# 仅用于 GitHub Generate release notes；npm run release 仍从 CHANGELOG.md 生成说明。
+changelog:
+  categories:
+    - title: 新增功能
+      labels: [enhancement]
+    - title: 修复
+      labels: [bug]
+    - title: 其他贡献
+      labels: ["*"]

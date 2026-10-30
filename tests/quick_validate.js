@@ -43,7 +43,7 @@ for (const pat of secretPatterns) {
 if (!secretFound) console.log('  OK: no secrets in source');
 
 // 5. SECURITY.md and templates exist
-const required = ['SECURITY.md', '.github/ISSUE_TEMPLATE/bug_report.md', '.github/ISSUE_TEMPLATE/feature_request.md', '.github/PULL_REQUEST_TEMPLATE.md', 'docs/RELEASE.md'];
+const required = ['SECURITY.md', '.github/ISSUE_TEMPLATE/bug_report.yml', '.github/ISSUE_TEMPLATE/feature_request.yml', '.github/PULL_REQUEST_TEMPLATE.md', 'docs/RELEASE.md'];
 let missing = required.filter(f => !fs.existsSync(f));
 if (missing.length) { console.error('MISSING:', missing.join(', ')); failed = true; }
 if (!failed) console.log('  OK: SECURITY.md + issue/PR templates present');

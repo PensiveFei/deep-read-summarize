@@ -1,20 +1,54 @@
-## What does this PR do?
+<!-- 请填写各节；不适用时说明原因。PR 是 Markdown 模板，必填要求由维护者审阅核对。安全漏洞请按 SECURITY.md 私下报告。 -->
 
-Describe the change and why it's needed.
+## 目的与关联
 
-## Related issue
+- 解决的问题及改后行为：
+- 关联 Issue / PR（没有则说明）：
+- 兼容性、配置和升级影响：
 
-Fixes #...
+## 版本与系统
 
-## Checklist
+- 插件版本 / 基础 commit：
+- DSH、Node.js、npm 版本及安装方式：
+- 系统版本、架构；适用时附浏览器、Python/uv、模型/device：
 
-- [ ] Tests pass (`npm test`)
-- [ ] Lint passes (`npm run lint`)
-- [ ] Security check passes (`npm run security`)
-- [ ] No secrets or local absolute paths added
-- [ ] No copyrighted content added
-- [ ] CHANGELOG.md updated if user-facing change
+## 复现与验证
 
-## Test plan
+1. 最小输入、选项和操作步骤：
+2. 修改前的实际结果：
+3. 修改后的预期与实测结果：
 
-How did you verify this change?
+| 检查命令 | 结果 / 不适用原因 |
+| --- | --- |
+| `npm test` | |
+| `npm run test:node` | |
+| `npm run lint` | |
+| `npm run security` | |
+| `npm run validate` | |
+| `node scripts/transcribe.js --self-check` | |
+| 完整宿主 / 转写实测（如适用） | |
+
+## 相关日志与脱敏报告
+
+- 脱敏日志、最小样本或截图（无日志时说明原因）：
+- 已替换的信息类别、附件检查、删节影响（勿列原值）：
+- 未验证的环境或已知限制：
+
+## 贡献归属
+
+- 代码、报告、复现、测试或文档贡献者：`@用户名 — 贡献 — Issue/PR 链接`
+- 署名偏好或匿名要求（可选；不要求公开姓名/邮箱）：
+- CHANGELOG 条目 / 归属记录（不适用时说明）：
+
+## 提交者检查
+
+- [ ] 已填写环境、复现、实际测试结果；不适用项已解释。
+- [ ] 已检查正文、代码、日志、截图与附件，移除凭据、个人信息和无权公开的内容。
+- [ ] 已补必要回归或文档，遵守 LF / UTF-8；依赖变化已同步锁文件。
+- [ ] 用户可见变化和贡献归属已记录；未擅自提升版本或发布。
+
+## 维护者合并 / 发布检查
+
+- [ ] 已审阅并感谢具体贡献，说明结果和下一步。
+- [ ] 已核对作者、共同作者与报告/复测者，尊重署名偏好。
+- [ ] 已将待发布归属转入目标 CHANGELOG 小节，发布时按 docs/RELEASE.md 复核公开 Notes。

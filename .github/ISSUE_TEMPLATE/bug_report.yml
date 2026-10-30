@@ -1,0 +1,73 @@
+name: Bug report / 缺陷报告
+description: 提供环境、最小复现和经过脱敏的诊断材料。
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你帮助改进项目！安全漏洞请按 [SECURITY.md](https://github.com/PensiveFei/deep-read-summarize/blob/main/SECURITY.md) 私下报告。
+        无法取得的字段请说明原因。请勿上传完整会话、私人文档或原始音视频。
+  - type: textarea
+    id: versions
+    attributes:
+      label: 版本与安装方式
+      description: 插件版本或 commit、DSH、Node.js、npm 版本和安装方式；不适用的项请说明原因。
+      placeholder: |
+        deep-read-summarize：
+        DSH：
+        Node.js / npm：
+        安装方式（npm / 源码 / tgz）：
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 系统与运行环境
+      description: 系统名称、版本、架构；涉及转写时附 Python/uv、模型和 device，涉及网页时附浏览器版本。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 最小复现步骤
+      description: 列出命令、输入类型、选项和触发步骤，用合成或允许公开的最小样本代替私人原文。
+      placeholder: |
+        1. 准备输入……
+        2. 配置 options……
+        3. 执行……
+        4. 出现问题……（频率：每次 / 偶发）
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 预期与实际行为
+      description: 说明差异；如为回归，提供最后正常的版本或未知原因。
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏后的相关日志
+      description: 提供错误阶段、报错及上下文；没有日志时说明原因，不要附完整会话。
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: redaction
+    attributes:
+      label: 脱敏报告
+      description: 说明替换的信息类别、检查过的截图/附件、删节影响；无敏感内容也说明已检查，勿重复原值。
+      placeholder: "已检查日志与附件；路径替换为 <WORKSPACE>；使用合成输入；删节不影响复现。"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 已搜索现有 Issue，或已说明与现有问题的关系。
+          required: true
+        - label: 已检查正文、日志和附件，移除凭据、个人信息和无权公开的内容；安全漏洞改走私密渠道。
+          required: true
