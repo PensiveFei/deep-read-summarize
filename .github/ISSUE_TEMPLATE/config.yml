@@ -3,6 +3,6 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/PensiveFei/deep-read-summarize/security/advisories/new
     about: Report a security issue privately — do not post details in a public issue.
-  - name: Questions & feedback
-    url: https://github.com/PensiveFei/deep-read-summarize/issues
-    about: Ask questions and share feedback (please search existing issues first).
+  - name: Contribution guide / 贡献说明
+    url: https://github.com/PensiveFei/deep-read-summarize/blob/main/CONTRIBUTING.md
+    about: 环境、检查命令、脱敏要求和维护者发布流程。

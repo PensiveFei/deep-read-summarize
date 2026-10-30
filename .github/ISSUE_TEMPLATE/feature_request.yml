@@ -1,0 +1,58 @@
+name: Feature request / 功能建议
+description: 描述真实场景、环境、当前限制及脱敏材料。
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: 感谢分享需求！没有复现或日志时说明不适用的原因，不要上传私人原文。
+  - type: textarea
+    id: versions
+    attributes:
+      label: 版本与安装方式
+      description: 插件版本或 commit、DSH、Node.js/npm 版本和安装方式；尚未安装或不适用时说明。
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 系统与运行环境
+      description: 系统版本和架构；按需补浏览器、转写模型及 device，不适用时说明。
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 需求场景与复现步骤
+      description: 按步骤描述当前操作及限制；全新能力可提供预期使用步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望行为与替代方案
+      description: 期望输出、替代方法、兼容性影响，以及如何判断完成。
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏日志或示例
+      description: 提供支持场景的最小材料；没有日志时说明不适用及原因。
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: redaction
+    attributes:
+      label: 脱敏报告
+      description: 说明替换的信息类别、附件检查及删节影响；无敏感内容时说明已检查，勿填写原值。
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 已搜索相关 Issue，并检查正文、日志和附件不含凭据、个人信息或无权公开的内容。
+          required: true
