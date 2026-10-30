@@ -6,7 +6,7 @@
 
 - Git、Node.js **18 或以上**、配套的 npm。建议使用 CI 已覆盖的 Node 24；CI 同时测试 Node 18/20/22/24，以及 Linux、macOS、Windows。
 - 在独立源码目录安装，不要在正在使用的 DSH profile 中运行 `npm ci`。
-- 普通测试使用 fixture，不要求 DSH、模型凭据或 Python。完整宿主验证需另装兼容 DSH（`engines.dsh` 为 `>=0.1.0-rc.6`），记录实际版本。
+- 普通 fixture 测试不要求 DSH、模型凭据或 Python。`node:test` 中的 Python 桩测试在找不到解释器时会跳过；完整覆盖这些用例需 Python 3（可通过 `PYTHON` 指定），无需真实模型。完整宿主验证需另装兼容 DSH（`engines.dsh` 为 `>=0.1.0-rc.6`），记录实际版本。
 
 ```bash
 git clone https://github.com/PensiveFei/deep-read-summarize.git
