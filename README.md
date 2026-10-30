@@ -1,5 +1,7 @@
 # deep-read-summarize
 
+[English](https://github.com/PensiveFei/deep-read-summarize/blob/main/README.en.md) | [简体中文](https://github.com/PensiveFei/deep-read-summarize/blob/main/README.md)
+
 [![MIT license](https://img.shields.io/github/license/PensiveFei/deep-read-summarize)](https://github.com/PensiveFei/deep-read-summarize/blob/main/LICENSE)
 [![release](https://img.shields.io/github/v/release/PensiveFei/deep-read-summarize)](https://github.com/PensiveFei/deep-read-summarize/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/PensiveFei/deep-read-summarize/ci.yml)](https://github.com/PensiveFei/deep-read-summarize/actions/workflows/ci.yml)
