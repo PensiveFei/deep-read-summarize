@@ -17,7 +17,7 @@ git switch -c fix/short-description
 
 仓库用 UTF-8 无 BOM、LF 换行，遵守 `.gitattributes`。改依赖时同步更新 `package-lock.json`，确认干净目录可运行 `npm ci --ignore-scripts`。
 
-只有无字幕音频转写才需要额外工具链：首次自举需 `uv`，脚本创建 Python 3.12 环境并安装 faster-whisper、下载模型，详见 [README](README.md)。这一步会联网并占用磁盘，不属于普通测试。完整精读还依赖宿主模型和工具；测试通过不能代替真机验证。
+无字幕音频转写需要额外工具链：首次自举需 `uv`，脚本创建 Python 3.12 环境并安装 faster-whisper、下载模型。这一步会联网并占用磁盘，不属于普通测试。其他输入也可能依赖工具，例如 YouTube 字幕的 `yt-dlp`、PDF 回退的 `pdftotext`，详见 [README](README.md)。完整精读还依赖宿主模型和工具；测试通过不能代替真机验证。
 
 ## 测试与检查
 
@@ -71,6 +71,8 @@ node scripts/transcribe.js --self-check
 ## 发布流程（维护者）
 
 贡献者无需 npm 发布权限或长期 Token。完整步骤和故障处理见 [docs/RELEASE.md](docs/RELEASE.md)。
+
+维护者需预先安装并登录 GitHub CLI（`gh auth status`），确认 Git 推送、Actions dispatch 和 Release 写入权限，以及 npm Trusted Publisher 配置。发布脚本会先提交/tag/推送，再调用 `gh` 调度工作流；先确认这些条件，避免停在发布中途。
 
 1. 合并已审阅的变更，等待 CI 全绿，核对兼容性、测试边界和贡献署名。
 2. 在 `CHANGELOG.md` 顶部写目标版本、**实际发布日**及致谢。主版本=不兼容、次版本=功能、修订号=修复。本地 `main` 与远端一致，除该文件外工作区干净。
