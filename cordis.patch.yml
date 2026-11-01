@@ -26,6 +26,8 @@
 #     whisperModel: 'small'      # transcription model (default: small)
 #     language: 'zh'             # transcription language (default: zh)
 #     device: 'cpu'              # cpu | auto | cuda; GPU needs a CUDA runtime (default: cpu)
+#     cpuThreads: 0              # 0 keeps library defaults; 1-64 for measured CPU tuning
+#     transcriptCache: true      # local content/config-verified transcript reuse (30 days, 128 MiB)
 #     maxRetries: 0              # quality-check retry rounds (default: 0)
 #     frontmatter: 'obsidian'    # obsidian | generic | minimal (default: obsidian)
 #                                #   generic swaps the keys Hugo reserves: type -> docType,

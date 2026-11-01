@@ -207,6 +207,8 @@ parsers: book, paper, video, web
     "whisperModel": "small",  // 视频转写模型档位：small | base | medium
     "language": "zh",         // 视频转写语言：纯英文视频可设 "en"
     "device": "cpu",          // 转写设备：cpu（默认）| auto | cuda；auto/cuda 需自备 CUDA 运行库，失败自动回退 cpu
+    "cpuThreads": 0,          // 0 保持转写库默认值；1-64 可按实际硬件调优
+    "transcriptCache": true,  // 音频内容与配置一致时复用本地逐字稿；false 强制每次推理
     "maxRetries": 0,          // 质量校验重试次数（默认 0 = 不重试，重试会明显变慢）
     "frontmatter": "obsidian", // frontmatter 键集：obsidian（默认，配 Dataview）| generic（换掉 Hugo 保留键）| minimal
     "requireCitations": true, // 关键结论是否必须标注出处
@@ -269,7 +271,22 @@ parsers: book, paper, video, web
 
 **转写工具链**：脚本用 `uv` 创建 **Python 3.12** 环境，从清华镜像安装 **`faster-whisper==1.2.1`**，通过 `HF_ENDPOINT=https://hf-mirror.com` 下载并缓存模型。健康的缓存环境直接运行，不要求 uv 仍在 PATH，也不再启动单独的 Python 导入探测。实际解释器和依赖版本记录在缓存目录的 `runtime.json`；Python 补丁版本、uv 和传递依赖未全部锁定，不能据此声称环境逐字一致。PyAV 可直接解码音频，无需单独 ffmpeg。三平台使用同一条命令 `node scripts/transcribe.js --audio <音频> --out <txt>`，默认 CPU；`options.device: "auto"` 可尝试自备的 CUDA，失败回退 CPU。缓存目录：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`（未设置时用 `~/.cache`）。创建 Python 环境默认先用镜像，失败再直连 GitHub；`DRS_UV_PYTHON_MIRROR` 可覆盖镜像，空字符串表示直连。
 
-> ⚠️ **首次转写会先下载模型（small 约 484MB，走 hf-mirror，非 GitHub），可能需要几分钟**，请耐心等待；**本机只下这一次**，之后所有视频转写用缓存、秒开。**只有「无字幕」视频才会触发转写**（有字幕的视频直接用字幕，不触发、不下载）。
+> ⚠️ **首次转写会先下载模型（small 约 484MB，走 hf-mirror，非 GitHub），可能需要几分钟**。之后复用模型文件；新音频仍需完整推理。同一音频命中经过校验的逐字稿缓存时，才会跳过推理。**只有「无字幕」视频才会触发转写**（有字幕的视频直接用字幕，不触发、不下载）。
+
+**逐字稿缓存与线程**：`options.transcriptCache` 默认开启。缓存键包含音频 SHA-256、受管理的本地模型快照、已安装依赖及解码配置；存储真实分段和起止时间，切换时间戳展示不必重转写。更改内容、配置或本地模型/依赖会失效；自定义本地模型目录、无法确认环境、损坏和过期记录均跳过缓存。缓存复用本地已有快照，不在线探测模型上游是否更新。逐字稿保存在上述缓存根目录的 `transcripts-v1`，单条上限 8 MiB、总量上限 128 MiB、有效期 30 天；清理在写入时执行。它不保存音频，也不会跳过后续精读与原文核验。
+
+`options.cpuThreads` 为 0–64 的整数，默认 `0` 保持库的 CPU 线程策略。可用同一音频对比 4/6/8 线程，线程越多不一定越快。CLI 可直接使用：
+
+```bash
+node scripts/transcribe.js --audio sample.m4a --out transcript.txt --cpu-threads 8
+node scripts/transcribe.js --audio sample.m4a --out transcript.txt --refresh-cache
+node scripts/transcribe.js --audio sample.m4a --out transcript.txt --no-cache
+node scripts/transcribe.js --clear-cache
+```
+
+`--clear-cache` 只清理逐字稿，不删除模型或 Python 环境。`--refresh-cache` 强制推理并更新缓存，`--no-cache` 禁用读写。成功调用输出一行 `metrics` JSON，报告 `cacheHit`、实际设备、音频时长，以及哈希、环境准备、依赖安装、Python、发布和总毫秒耗时；未命中时还报告导入、模型加载、准备（含解码/VAD）与完整分段迭代耗时。缓存命中不会冒用上次推理耗时。
+
+笔记的 `qualityPassed` 核验笔记与取得的原文，不证明 ASR 听写准确；调整转写路径仍须对照音频检查误字、漏段、数字、否定句与时间戳。
 
 **质量/速度**：`small` + `int8` 量化 + `VAD` 静音过滤，中文质量可用且 CPU 友好。**有字幕的视频不转写（快）**；无字幕视频转写，CPU 上约为视频时长的 0.5–2×。
 
@@ -300,7 +317,7 @@ parsers: book, paper, video, web
 - **分块结构**：不同类型分块方式不同（章节/主题/段落），影响**输出结构**与覆盖。
 
 ### 硬件
-- **GPU vs CPU**：GPU 转写可比 CPU 快一个数量级（`device='auto'` 自动选）。CPU 上无字幕视频约 0.5–2× 时长。
+- **GPU vs CPU**：GPU 收益依赖显卡、运行库、模型与音频；设备可见不代表 CUDA 推理可用，应以实际耗时与文本对照为准。
 
 ### 其他
 - **首次 vs 复用**：首次要下模型（约 484MB），之后缓存复用。
@@ -327,7 +344,7 @@ parsers: book, paper, video, web
 - 视频 `textSource: "desc"` 明确为降级来源，不能取得完整精读的质量通过状态。B站多 P 链接按 `p` 选择对应 CID、分 P 标题和时长。
 - 返回 `timings` 提供各阶段毫秒耗时，用同一资料、模型、篇幅和质量门槛比较；调度测试不能当成真实 LLM 加速比例。
 
-本次未改小模型档位、减少字数门槛或抽样跳过原文。常驻 ASR 模型、逐字稿缓存和分层 QC 仍需单独做质量与性能基准。
+默认保持 small/int8、既有解码设置、篇幅与独立原文核验。逐字稿缓存主要加速重复处理，新视频可用线程配置和分阶段计时调优；常驻 ASR 模型、批量推理和分层 QC 仍需独立基准，不自动启用。
 
 ## 成本
 

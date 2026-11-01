@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **逐字稿内容缓存**：默认按音频 SHA-256、受管理的本地模型快照、安装环境和固定解码配置复用真实分段；切换时间戳展示无需重复推理。缓存命中仍原子发布本次任务产物，后续精读和独立原文核验不跳过。自定义本地模型、环境不明、损坏/过期记录和失败/空结果不复用。
+- **缓存控制**：`options.transcriptCache`（默认 true）；CLI `--no-cache` 禁用读写、`--refresh-cache` 强制推理并更新、`--clear-cache` 仅清理逐字稿。内容保存在本地 `transcripts-v1`，单条最多 8 MiB、总量最多 128 MiB、有效期 30 天；写入时清理。缓存使用本地已有模型快照，不在线探测上游更新，不缓存音频。
+- **CPU 线程配置**：`options.cpuThreads` / `--cpu-threads` 接受 0–64 的整数，默认 0 保持库策略；完整透传到视频转写，默认 small/int8、VAD 与解码参数保持原状。
+- **转写阶段计时**：成功调用输出 `metrics` JSON，分开报告缓存命中、实际设备、音频时长、环境/依赖准备、Python 与发布耗时；未命中时记录导入、模型加载、准备和完整的延迟分段迭代，命中时不复用旧推理计时。
+
+### Verification
+
+- Windows CPU 对照一段自制 58.439 秒中文语音：原始 runner 24.517 秒，新 runner 强制推理 23.118 秒，命中缓存并开启时间戳 0.098 秒，8 线程且禁用缓存 21.275 秒。默认与 8 线程文本均与原结果逐字一致；缓存切换时间戳后正文一致。单样本结果仅覆盖 ASR，不代表完整精读或其他资料的加速比例。详见 [ASR 基准记录](docs/ASR_BENCHMARK.md)。
+- ASR 错词仍可能进入逐字稿；笔记 `qualityPassed` 不等于音轨听写准确。GPU、批量推理和常驻模型未自动启用，仍需独立的音频质量与资源基准。
+
 ### Fixed
 
 - **工作流致命错误**：精读、成稿、原文核验和修订阶段统一传播 `[FATAL]`、`UNSUPPORTED_SCHEMA` 与 `fatal: true` 错误；精读遇到致命错误后停止派发剩余分块。普通临时错误仍保留原有降级行为。

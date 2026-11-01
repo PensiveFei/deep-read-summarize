@@ -129,7 +129,7 @@ const kindFocus = {
 phase("获取与分块");
 const fetchStartedAt = Date.now();
 const fetchPrompt = parsers[selectedType]
-  .buildPrompt(input, { tempDir: tempDir, tempFile: tempFile, maxChunks: maxChunks, transcribe: options.transcribe, whisperModel: whisperModel, language: transcribeLanguage, device: transcribeDevice, includeTimestamps: includeTimestamps, transcribeScriptPath: __runtimePaths.transcribeScript });
+  .buildPrompt(input, { tempDir: tempDir, tempFile: tempFile, maxChunks: maxChunks, transcribe: options.transcribe, whisperModel: whisperModel, language: transcribeLanguage, device: transcribeDevice, cpuThreads: options.cpuThreads, transcriptCache: options.transcriptCache, includeTimestamps: includeTimestamps, transcribeScriptPath: __runtimePaths.transcribeScript });
 // fetchSchema 由插件在构建时从 schemas/index.js 注入（单一真相，避免两份 schema 漂移）。
 
 let fetched;

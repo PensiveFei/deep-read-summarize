@@ -20,6 +20,7 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const transcriptCache = require('../lib/transcript-cache');
 
 // 新环境使用 Python 3.12；ASR 主包固定为已验证版本。
 // 复用环境不强制更换解释器；实际 Python / 传递依赖版本记录在 runtime.json。
@@ -175,19 +176,24 @@ function isFileAt(p) {
 
 /** 解析命令行（支持 --k v、--k=v、-k v 三种写法）。 */
 function parseArgs(argv) {
-  const out = { audio: '', out: '', model: 'small', language: 'zh', device: 'cpu', timestamps: false, selfCheck: false, help: false, unknown: [] };
+  const out = { audio: '', out: '', model: 'small', language: 'zh', device: 'cpu', cpuThreads: 0,
+    cache: true, refreshCache: false, clearCache: false, timestamps: false, selfCheck: false, help: false, unknown: [] };
   const takes = {
     '--audio': 'audio', '-a': 'audio',
     '--out': 'out', '-o': 'out',
     '--model': 'model', '-m': 'model',
     '--language': 'language', '-l': 'language', '--lang': 'language',
-    '--device': 'device', '-d': 'device'
+    '--device': 'device', '-d': 'device', '--cpu-threads': 'cpuThreads'
   };
   const list = argv || [];
   for (let i = 0; i < list.length; i++) {
     const a = String(list[i]);
     if (a === '--help' || a === '-h') { out.help = true; continue; }
     if (a === '--self-check') { out.selfCheck = true; continue; }
+    if (a === '--no-cache' || a === '--cache=false') { out.cache = false; continue; }
+    if (a === '--cache' || a === '--cache=true') { out.cache = true; continue; }
+    if (a === '--refresh-cache') { out.refreshCache = true; continue; }
+    if (a === '--clear-cache') { out.clearCache = true; continue; }
     if (a === '--timestamps' || a === '--timestamps=true') { out.timestamps = true; continue; }
     if (a === '--no-timestamps' || a === '--timestamps=false') { out.timestamps = false; continue; }
     if (takes[a]) {
@@ -210,7 +216,10 @@ const PY_RUNNER = [
   "import sys",
   "import json",
   "import tempfile",
+  "import time",
   "import importlib.metadata as metadata",
+  "runner_started = time.perf_counter()",
+  "timings = {'import': 0, 'modelLoad': 0, 'prepare': 0, 'inference': 0, 'write': 0}",
   "",
   "def bootstrap_required(code, reason, message):",
   "    status_file = os.environ.get('DRS_BOOTSTRAP_STATUS')",
@@ -233,6 +242,7 @@ const PY_RUNNER = [
   "    from faster_whisper import WhisperModel",
   "except ModuleNotFoundError as exc:",
   "    bootstrap_required(" + DEPENDENCY_MISSING + ", 'missing-dependency', 'missing import dependency: %s' % exc)",
+  "timings['import'] = (time.perf_counter() - runner_started) * 1000",
   "",
   "runtime_versions = None",
   "def record_runtime(device, phase):",
@@ -247,7 +257,7 @@ const PY_RUNNER = [
   "                runtime_versions[name] = metadata.version(name)",
   "            except metadata.PackageNotFoundError:",
   "                runtime_versions[name] = None",
-  "    runtime = {'python': sys.version.split()[0], 'packages': runtime_versions, 'model': os.environ['DRS_MODEL'], 'device': device, 'computeType': 'int8', 'phase': phase}",
+  "    runtime = {'python': sys.version.split()[0], 'packages': runtime_versions, 'model': os.environ['DRS_MODEL'], 'device': device, 'computeType': 'int8', 'cpuThreads': int(os.environ.get('DRS_CPU_THREADS', '0')), 'phase': phase}",
   "    temporary = None",
   "    try:",
   "        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=os.path.dirname(target), prefix='.runtime-', suffix='.json', delete=False) as f:",
@@ -265,12 +275,23 @@ const PY_RUNNER = [
   "    print('[transcribe] runtime python=%s faster-whisper=%s device=%s phase=%s' % (runtime['python'], runtime_versions['faster-whisper'], device, phase), file=sys.stderr)",
   "",
   "def load(device):",
-  "    return WhisperModel(os.environ['DRS_MODEL'], device=device, compute_type='int8')",
+  "    return WhisperModel(os.environ['DRS_MODEL'], device=device, compute_type='int8', cpu_threads=int(os.environ.get('DRS_CPU_THREADS', '0')))",
   "",
   "def run(device):",
-  "    model = load(device)",
+  "    started = time.perf_counter()",
+  "    try:",
+  "        model = load(device)",
+  "    finally:",
+  "        timings['modelLoad'] += (time.perf_counter() - started) * 1000",
+  "    started = time.perf_counter()",
   "    segs, info = model.transcribe(os.environ['DRS_AUDIO'], vad_filter=True, language=(os.environ.get('DRS_LANG') or None))",
-  "    return [{'start': s.start, 'end': s.end, 'text': s.text.strip()} for s in segs], info",
+  "    timings['prepare'] += (time.perf_counter() - started) * 1000",
+  "    started = time.perf_counter()",
+  "    try:",
+  "        segments = [{'start': s.start, 'end': s.end, 'text': s.text.strip().replace('\\r', ' ').replace('\\n', ' ')} for s in segs if s.text.strip()]",
+  "    finally:",
+  "        timings['inference'] += (time.perf_counter() - started) * 1000",
+  "    return segments, info, getattr(getattr(model, 'model', None), 'device', device)",
   "",
   "def timestamp(seconds):",
   "    millis = max(0, int(round(float(seconds) * 1000)))",
@@ -284,18 +305,19 @@ const PY_RUNNER = [
   "device = os.environ.get('DRS_DEVICE') or 'cpu'",
   "record_runtime(device, 'starting')",
   "try:",
-  "    segments, info = run(device)",
+  "    segments, info, device = run(device)",
   "except Exception as exc:",
   "    if device == 'cpu':",
   "        raise",
   "    print('[transcribe] device=%s failed (%s); retrying on cpu' % (device, exc), file=sys.stderr)",
   "    device = 'cpu'",
   "    record_runtime(device, 'starting')",
-  "    segments, info = run('cpu')",
+  "    segments, info, device = run('cpu')",
   "record_runtime(device, 'completed')",
   "",
   "# DRS_OUT 是本次调用独有的暂存路径；Node 校验后才原子发布到最终路径。",
   "# 先收集全部分段再落盘，中途推理失败不会留下半截文本。",
+  "write_started = time.perf_counter()",
   "include_timestamps = os.environ.get('DRS_TIMESTAMPS') == '1'",
   "lines = []",
   "for segment in segments:",
@@ -307,6 +329,11 @@ const PY_RUNNER = [
   "    lines.append(text)",
   "with open(os.environ['DRS_OUT'], 'w', encoding='utf-8', newline='\\n') as f:",
   "    f.write('\\n'.join(lines))",
+  "timings['write'] = (time.perf_counter() - write_started) * 1000",
+  "timings['total'] = (time.perf_counter() - runner_started) * 1000",
+  "if os.environ.get('DRS_SEGMENTS'):",
+  "    with open(os.environ['DRS_SEGMENTS'], 'w', encoding='utf-8') as f:",
+  "        json.dump({'segments': segments, 'device': device, 'cpuThreads': int(os.environ.get('DRS_CPU_THREADS', '0')), 'duration': getattr(info, 'duration', None), 'durationAfterVad': getattr(info, 'duration_after_vad', None), 'timings': timings}, f, ensure_ascii=False, allow_nan=False)",
   ""
 ].join("\n");
 
@@ -320,7 +347,9 @@ const USAGE = [
   '',
   '选项：--audio/-a  --out/-o  --model/-m（默认 small）  --language/-l（默认 zh）',
   '      --device（默认 cpu；auto/cuda 需自备 CUDA 运行库，失败会自动回退 cpu）',
-  '      --timestamps（逐段保留真实起止时间；默认关闭，关闭时仍按段换行）'
+  '      --timestamps（逐段保留真实起止时间；默认关闭，关闭时仍按段换行）',
+  '      --cpu-threads 0..64（0 保持库默认值）；--no-cache 禁用逐字稿缓存',
+  '      --refresh-cache 强制重转写并更新缓存；--clear-cache 仅清理逐字稿缓存'
 ].join('\n');
 
 function fail(msg, code) {
@@ -350,6 +379,8 @@ function needsBootstrap(result, statusFile) {
 }
 
 function main(argv) {
+  const startedAt = Date.now();
+  const timing = { hash: 0, environment: 0, cacheLookup: 0, dependencyInstall: 0, python: 0, publish: 0, total: 0 };
   const args = parseArgs(argv);
   const c = context({});
   const root = cacheRoot(c);
@@ -358,7 +389,6 @@ function main(argv) {
   const uv = findUv(c);
 
   if (args.help) { process.stdout.write(USAGE + '\n'); return 0; }
-
   // --self-check：CI 与排查用，只报告解析结果，不产生任何副作用。
   if (args.selfCheck) {
     process.stdout.write(JSON.stringify({
@@ -376,7 +406,15 @@ function main(argv) {
     return 0;
   }
 
+  if (args.clearCache) {
+    try { transcriptCache.clear(root); process.stdout.write('[transcribe] transcript cache cleared\n'); return 0; }
+    catch (error) { return fail('无法清理逐字稿缓存：' + error.message); }
+  }
+
   if (args.unknown.length) process.stderr.write('[transcribe] 忽略未知参数：' + args.unknown.join(', ') + '\n');
+  if (!/^\d+$/.test(String(args.cpuThreads))) return fail('--cpu-threads 必须为 0..64 的整数');
+  args.cpuThreads = Number(args.cpuThreads);
+  if (!Number.isInteger(args.cpuThreads) || args.cpuThreads < 0 || args.cpuThreads > 64) return fail('--cpu-threads 必须为 0..64 的整数');
   if (!args.audio || !args.out) {
     process.stderr.write(USAGE + '\n');
     return fail('--audio 与 --out 都是必填的。');
@@ -401,8 +439,29 @@ function main(argv) {
     // 与最终文件处于同一文件系统，rename 才能原子发布；每次调用独占暂存目录。
     stagingDir = fs.mkdtempSync(path.join(path.dirname(outputPath), '.drs-transcribe-'));
     const stagingOutput = path.join(stagingDir, 'transcript.txt');
+    const segmentsFile = path.join(stagingDir, 'segments.json');
+    const hashStarted = Date.now();
+    const audioHash = args.cache ? transcriptCache.hashFile(args.audio) : null;
+    timing.hash = Date.now() - hashStarted;
+    const lookupStarted = Date.now();
+    const runtimeBefore = args.cache ? transcriptCache.runtimeIdentity(root, args.model) : null;
+    const id = transcriptCache.identity(audioHash, args, runtimeBefore, PY_RUNNER);
+    const cached = args.cache && !args.refreshCache ? transcriptCache.read(root, id) : null;
+    timing.cacheLookup = Date.now() - lookupStarted;
+    if (cached) {
+      fs.writeFileSync(stagingOutput, transcriptCache.render(cached.segments, args.timestamps), 'utf8');
+      const publishStarted = Date.now();
+      fs.renameSync(stagingOutput, outputPath);
+      timing.publish = Date.now() - publishStarted;
+      timing.total = Date.now() - startedAt;
+      process.stdout.write('[transcribe] metrics ' + JSON.stringify({ cacheHit: true, device: cached.device,
+        cpuThreads: cached.cpuThreads, duration: cached.duration, timings: timing }) + '\n');
+      process.stdout.write('TRANSCRIBED ' + fs.statSync(outputPath).size + ' bytes to ' + args.out + '\nDONE\n');
+      return 0;
+    }
 
     const childEnv = Object.assign({}, process.env);
+    const environmentStarted = Date.now();
 
     // 1) venv：优先复用已装好的 3.12，没有才让 uv 装。
     //    镜像只用于加速；失败就换直连重试 —— 镜像挂掉不该让用户彻底装不上。
@@ -440,6 +499,8 @@ function main(argv) {
     childEnv.DRS_LANG = args.language;
     childEnv.DRS_DEVICE = args.device;
     childEnv.DRS_TIMESTAMPS = args.timestamps ? '1' : '0';
+    childEnv.DRS_CPU_THREADS = String(args.cpuThreads);
+    childEnv.DRS_SEGMENTS = segmentsFile;
     childEnv.DRS_FASTER_WHISPER_VERSION = FASTER_WHISPER_VERSION;
     childEnv.DRS_RUNTIME = path.join(root, 'runtime.json');
     const bootstrapStatus = path.join(stagingDir, 'bootstrap-status.json');
@@ -447,6 +508,8 @@ function main(argv) {
 
     const pyScript = path.join(stagingDir, 'transcribe_run.py');
     fs.writeFileSync(pyScript, PY_RUNNER, 'utf8');
+    timing.environment = Date.now() - environmentStarted;
+    const pythonStarted = Date.now();
 
     // 3) 转写（首次会下载模型到 HF_HOME，之后缓存复用）。
     // 只有导入缺失/明确版本不符才允许自举并重试一次，解码/CUDA/推理失败不重装。
@@ -454,19 +517,47 @@ function main(argv) {
     if (needsBootstrap(result, bootstrapStatus)) {
       if (uv === null) throw new Error('需要安装 faster-whisper==' + FASTER_WHISPER_VERSION + '，但没有找到 uv。请先安装：' + uvInstallHint(c));
       process.stdout.write('[transcribe] 安装 faster-whisper==' + FASTER_WHISPER_VERSION + '（清华镜像）…\n');
+      const installStarted = Date.now();
       runStep(uv, ['pip', 'install', '--python', py, 'faster-whisper==' + FASTER_WHISPER_VERSION, '-i', PYPI_MIRROR], childEnv, 'faster-whisper 安装');
+      timing.dependencyInstall = Date.now() - installStarted;
       fs.rmSync(bootstrapStatus, { force: true });
       runStep(py, [pyScript], childEnv, '转写');
     } else {
       checkStep(result, py, '转写');
     }
+    timing.python = Date.now() - pythonStarted - timing.dependencyInstall;
 
     const bytes = fs.statSync(stagingOutput).size;
     const verdict = judgeTranscript(bytes);
     if (!verdict.ok) {
       return fail(verdict.message, verdict.code);
     }
+    let report = null;
+    try {
+      const candidate = JSON.parse(fs.readFileSync(segmentsFile, 'utf8'));
+      if (transcriptCache.validSegments(candidate.segments) &&
+          transcriptCache.render(candidate.segments, args.timestamps) === fs.readFileSync(stagingOutput, 'utf8')) report = candidate;
+    } catch (error) { /* A missing diagnostic must not discard a valid transcript. */ }
+    const publishStarted = Date.now();
     fs.renameSync(stagingOutput, outputPath);
+    timing.publish = Date.now() - publishStarted;
+    if (args.cache && report) {
+      try {
+        const runtimeAfter = transcriptCache.runtimeIdentity(root, args.model);
+        // Do not cache audio modified during inference, or a model/environment
+        // changed concurrently. A newly bootstrapped environment is eligible.
+        if ((!runtimeBefore || runtimeBefore === runtimeAfter) && audioHash === transcriptCache.hashFile(args.audio)) {
+          const stored = transcriptCache.write(root, transcriptCache.identity(audioHash, args, runtimeAfter, PY_RUNNER), report);
+          if (!stored) process.stderr.write('[transcribe] transcript cache unavailable; current result retained\n');
+        }
+      } catch (error) {
+        process.stderr.write('[transcribe] transcript cache unavailable; current result retained\n');
+      }
+    }
+    timing.total = Date.now() - startedAt;
+    process.stdout.write('[transcribe] metrics ' + JSON.stringify({ cacheHit: false, device: report && report.device,
+      cpuThreads: args.cpuThreads, duration: report && report.duration, timings: timing,
+      runnerTimings: report && report.timings }) + '\n');
     process.stdout.write('TRANSCRIBED ' + bytes + ' bytes to ' + args.out + '\n');
     process.stdout.write('DONE\n');
     return 0;

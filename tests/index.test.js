@@ -351,15 +351,14 @@ test('transcribe: CLI parsing accepts long, = and short forms', () => {
 });
 
 test('transcribe: the runner never leaves a half-written transcript behind', () => {
-  // 调用方按「输出文件非空且稳定」判断转写完成，所以必须先收集全部分段再落盘，
-  // 否则中途失败会留下半截文本被当成成功。
-  assert.ok(transcribe.PY_RUNNER.includes('segments, info = run(device)'),
+  // 完整收集分段后写本次暂存文件；调用方还必须核对退出码与原子发布。
+  assert.ok(transcribe.PY_RUNNER.includes('segments, info, device = run(device)'),
     'segments must be collected before the file is opened');
   assert.ok(/with open\(os\.environ\['DRS_OUT'\]/.test(transcribe.PY_RUNNER));
   const transcriptWrites = transcribe.PY_RUNNER.match(/with open\(os\.environ\['DRS_OUT'\]/g) || [];
   assert.strictEqual(transcriptWrites.length, 1, 'exactly one transcript write, after collection');
   assert.ok(transcribe.PY_RUNNER.indexOf("with open(os.environ['DRS_OUT']") >
-    transcribe.PY_RUNNER.indexOf('segments, info = run(device)'));
+    transcribe.PY_RUNNER.indexOf('segments, info, device = run(device)'));
 });
 
 test('skill: the Windows-only transcription caveat is gone', () => {

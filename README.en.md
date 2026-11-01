@@ -208,6 +208,8 @@ The `deep_read_summarize` tool takes these parameters directly. On older hosts, 
     "whisperModel": "small",  // video ASR tier: small | base | medium
     "language": "zh",         // video ASR language: use "en" for English-only videos
     "device": "cpu",          // ASR device: cpu (default) | auto | cuda; auto/cuda needs a CUDA runtime and falls back to cpu
+    "cpuThreads": 0,          // 0 keeps library defaults; 1-64 allows hardware-specific tuning
+    "transcriptCache": true,  // reuse a verified local transcript for matching audio and settings
     "maxRetries": 0,          // quality-check retries (default 0 = no retry; retrying is noticeably slower)
     "frontmatter": "obsidian", // key set: obsidian (default, for Dataview) | generic (drops the keys Hugo reserves) | minimal
     "requireCitations": true, // whether key conclusions must carry citations
@@ -270,7 +272,22 @@ Video text extraction is a **unified pipeline** (the old "three tiers" are gone)
 
 **Transcription toolchain**: `uv` provisions **Python 3.12** and installs **`faster-whisper==1.2.1`** from the Tsinghua mirror; models use `HF_ENDPOINT=https://hf-mirror.com` and the local cache. Healthy cached environments run directly without requiring uv or a separate Python import probe. Actual interpreter and dependency versions are recorded in the cache's `runtime.json`; Python patch releases, uv, and all transitive dependencies are not fully pinned. PyAV decodes audio without a separate ffmpeg. All three platforms use `node scripts/transcribe.js --audio <file> --out <txt>`. CPU is the default; `options.device: "auto"` can try a supplied CUDA runtime and falls back to CPU. Cache roots are `%LOCALAPPDATA%\deep-read-summarize` on Windows, `~/Library/Caches/deep-read-summarize` on macOS, and `$XDG_CACHE_HOME/deep-read-summarize` on Linux (falling back to `~/.cache`). Python provisioning tries a mirror and then direct GitHub; `DRS_UV_PYTHON_MIRROR` overrides it, with an empty value selecting direct downloads.
 
-> ⚠️ **The first transcription downloads the model first (small ≈ 484 MB, via hf-mirror, not GitHub) and may take a few minutes** — please be patient; **it downloads only once** on your machine, then every later transcription uses the cache and starts instantly. **Only subtitle-less videos trigger transcription** (subtitled videos use their subtitles directly — no trigger, no download).
+> ⚠️ **The first transcription downloads the model (small ≈ 484 MB, via hf-mirror, not GitHub) and may take a few minutes**. Later runs reuse model files; new audio still requires full inference. Only a verified transcript cache hit skips inference. **Only subtitle-less videos trigger transcription** (subtitled videos use their subtitles directly).
+
+**Transcript cache and threads**: `options.transcriptCache` defaults to true. Keys include the audio SHA-256, managed local model snapshots, installed dependencies, and decoding settings. Canonical segments retain real start/end times, so changing timestamp presentation does not repeat inference. Changed content/configuration/models/dependencies, custom local model directories, unknown environments, corrupt entries and expired entries bypass reuse. Cache lookup uses the existing local snapshot and does not check for upstream model updates online. Entries live under `transcripts-v1` in the cache root: 8 MiB per entry, 128 MiB total, 30-day validity, pruned on writes. Audio is not stored, and reading/source review still runs.
+
+`options.cpuThreads` accepts integers 0–64. The default `0` preserves the library's CPU thread policy. Compare 4/6/8 on the same audio; more threads are not necessarily faster. CLI controls:
+
+```bash
+node scripts/transcribe.js --audio sample.m4a --out transcript.txt --cpu-threads 8
+node scripts/transcribe.js --audio sample.m4a --out transcript.txt --refresh-cache
+node scripts/transcribe.js --audio sample.m4a --out transcript.txt --no-cache
+node scripts/transcribe.js --clear-cache
+```
+
+`--clear-cache` removes only transcripts, retaining models and Python. `--refresh-cache` forces inference and updates the cache; `--no-cache` disables reads and writes. Successful calls print one `metrics` JSON line with `cacheHit`, actual device, audio duration, and milliseconds for hashing, environment preparation, dependency installation, Python, publication and total time. Misses also include import, model loading, preparation (including decoding/VAD), and complete lazy-segment iteration. Hits do not reuse previous inference timings.
+
+The note's `qualityPassed` checks the note against acquired text; it does not establish ASR accuracy. ASR changes still need audio/reference comparisons for errors, omissions, numbers, negation and timestamps.
 
 **Quality/speed**: `small` + `int8` quantization + `VAD` silence filtering gives usable Chinese quality and is CPU-friendly. **Subtitled videos are not transcribed (fast)**; subtitle-less videos are transcribed at roughly 0.5–2× the video length on CPU.
 
@@ -301,7 +318,7 @@ Video text extraction is a **unified pipeline** (the old "three tiers" are gone)
 - **Chunking structure**: different types chunk differently (chapter/topic/paragraph), affecting **output structure** and coverage.
 
 ### Hardware
-- **GPU vs CPU**: GPU transcription can be an order of magnitude faster than CPU (`device='auto'` picks automatically). Subtitle-less videos are ≈ 0.5–2× the length on CPU.
+- **GPU vs CPU**: gains depend on hardware, runtime libraries, model and audio. A visible GPU does not prove CUDA inference works; compare actual time and transcript accuracy.
 
 ### Other
 - **First run vs reuse**: the first run downloads the model (≈ 484 MB); later runs reuse the cache.
@@ -328,7 +345,7 @@ Two classes:
 - Video `textSource: "desc"` is explicitly degraded and cannot pass as a complete deep read. Bilibili `p` selects the matching CID, part title, and duration.
 - Returned `timings` reports stage durations in milliseconds. Compare the same sources, model, output size, and quality gates; scheduling simulations are not real LLM speedup measurements.
 
-This release does not lower model size, output length, or source coverage. Persistent ASR workers, transcript caching, and hierarchical review need separate quality and performance benchmarks.
+Defaults preserve small/int8, existing decoding settings, output length and independent source review. Transcript caching speeds up repeated audio; new audio can be profiled and tuned with CPU thread settings. Persistent ASR workers, batch inference and hierarchical review require separate benchmarks and are not enabled automatically.
 
 ## Cost
 

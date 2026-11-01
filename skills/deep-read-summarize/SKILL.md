@@ -23,7 +23,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 ## 输入
 
 用户提供：内容链接或本地文件路径。
-可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / outputDir / tempDir / frontmatter）。
+可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / cpuThreads / transcriptCache / outputDir / tempDir / frontmatter）。
 
 优先调用插件提供的 `deep_read_summarize` 工具，参数为 `{ input, type, options }`。如果当前宿主没有这个工具，按技能末尾提供的 meta / script / args 调用 `workflow` 工具。两种入口执行相同的获取、精读与质量核验。
 
@@ -81,7 +81,9 @@ status: 已完成
   3. 都不行 → 降级提示用户手动提供转写文本，或退回 desc 作背景；**绝不阻塞、绝不自动装重依赖**。
 - `options.transcribe`：**默认 true**（无字幕自动转写）；设为 `false` 则跳过转写（只用字幕/desc 或降级）。
 - **转写工具链**：脚本自举，本机/用户一致——`uv` 建 Python 3.12 环境 + 清华镜像装 `faster-whisper` + `HF_ENDPOINT=https://hf-mirror.com` 下模型并缓存；脚本是 **Node** 写的，三平台**同一份实现、同一条命令**（`node <脚本路径> --audio <音频> --out <txt>`）；转写默认 **CPU**（`options.device` 默认 `cpu`），GPU 需自备 CUDA 运行库（设 `options.device: "auto"`，失败自动回退 CPU）；faster-whisper 内置 PyAV 解码音频，**无需单独 ffmpeg**。
-- **⚠️ 首次转写会先下载 small 模型（约 484MB，hf-mirror，非 GitHub），可能较慢**——执行转写前**先向用户说明**这是正常的一次性下载，之后缓存复用、秒开；不要当成卡死而中断。
+- **⚠️ 首次转写会先下载 small 模型（约 484MB，hf-mirror，非 GitHub），可能较慢**——执行转写前**先向用户说明**这是正常的一次性下载；之后复用模型文件，新音频仍需推理，不保证秒开。
+- `options.transcriptCache` 默认 true：只有脚本核对音频内容、受管理的模型快照、环境和解码配置后才可复用逐字稿，命中也必须确认本次进程成功并发布本次产物，不能直接使用别的任务的旧文件。缓存含本地文本、有效期 30 天、总量上限 128 MiB；`--clear-cache` 只清理逐字稿。设 false 禁用读写，`--refresh-cache` 可强制重转写。缓存不会跳过精读和独立核验。
+- `options.cpuThreads` 为 0–64 的整数，默认 0 保持库默认策略。记录转写日志的 metrics：cacheHit、实际设备、音频时长与阶段耗时；命中缓存时不要引用上次推理耗时，也不要由此推测 token。笔记核验不能证明音轨听写准确，线程或 GPU 调优需单独比对音频，不自行降低模型或解码门槛。
 - **质量/速度**：small/int8 + VAD 静音过滤，中文质量可用且 CPU 友好；有字幕视频不转写（快）。装不上/失败则降级，不静默。
 - YouTube 用 yt-dlp 抓 CC；未装时**绝不下载 exe 二进制**（GitHub 直连易卡死），按系统装（Windows `winget install yt-dlp.yt-dlp` / macOS `brew install yt-dlp` / 任意平台 `pip install -U yt-dlp`）；仍不可用则转写或降级。
 - 运行 yt-dlp 加 `--socket-timeout 15 --retries 3` 防超时。

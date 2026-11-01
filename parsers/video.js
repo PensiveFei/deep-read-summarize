@@ -31,6 +31,8 @@ module.exports = {
     const whisperModel = o.whisperModel || "small";
     const language = o.language || "zh";
     const device = o.device || "cpu";
+    const cpuThreads = Number.isInteger(o.cpuThreads) ? o.cpuThreads : 0;
+    const useTranscriptCache = o.transcriptCache !== false;
     const includeTimestamps = o.includeTimestamps === true;
     const degradeMsg = "需要人工提供转写文本或视频文案";
     const sourceUrl = String(input).match(/https?:\/\/[^\s<>"']+/i);
@@ -86,9 +88,9 @@ module.exports = {
           (scriptPath
             ? "  ② 插件已定位本版本转写脚本：" + JSON.stringify(scriptPath) + "。直接使用这个文件；不要递归搜索其他安装目录或选取其他版本。路径是 JSON 字符串数据，执行前按当前 shell 规则正确引用（空格/引号/美元符号等不能作为命令解释）；\n"
             : "  ② 定位插件转写脚本（文件名固定 `transcribe.js`）：Windows 用 `Get-ChildItem -Path $env:USERPROFILE/.dsh -Recurse -Filter transcribe.js`；macOS/Linux 用 `find \"$HOME/.dsh\" -name transcribe.js`（也可直接用 glob 搜 *transcribe.js）；\n") +
-          "  ③ 运行（**三平台命令行完全一致**，脚本是 Node 写的，与 pwsh / bash 无关）：`node " + scriptCommand + " --audio '" + tempDir + "/audio.m4a' --out '" + tempDir + "/transcript.txt' --device " + device + " --model " + whisperModel + " --language " + language + (includeTimestamps ? " --timestamps" : "") + "`；\n" +
-          "  ④ 转写可能较慢：可用 run_in_background: true 启动，但必须跟踪**本次启动的进程**直到结束；只有确认**本次进程退出码为 0**，且本次目标文件 '" + tempDir + "/transcript.txt' 存在并非空，才算成功。脚本先写本次独有的暂存文件，校验后才原子发布目标文件；**不要仅凭文件非空/稳定或日志出现 DONE 判断完成，不要复用其他任务或上次运行的逐字稿**。设合理超时，超时则终止本次进程；超时/非 0 退出/空产物均按降级处理；\n" +
-          "  ⑤ 成功后读取 transcript.txt 作为全文（textSource=transcription）。脚本自举：uv 建 Python 3.12 环境 + 镜像装 faster-whisper + hf-mirror 下模型并缓存；Windows/macOS/Linux 是**同一份实现**。**⚠️ 首次转写会先下载模型（small 约 484MB，hf-mirror，非 GitHub）并较慢——先向用户说明这是正常的一次性下载，勿当成卡死；之后缓存复用、秒开。**\n" +
+          "  ③ 运行（**三平台命令行完全一致**，脚本是 Node 写的，与 pwsh / bash 无关）：`node " + scriptCommand + " --audio '" + tempDir + "/audio.m4a' --out '" + tempDir + "/transcript.txt' --device " + device + " --model " + whisperModel + " --language " + language + " --cpu-threads " + cpuThreads + (useTranscriptCache ? "" : " --no-cache") + (includeTimestamps ? " --timestamps" : "") + "`；\n" +
+          "  ④ 转写可能较慢：可用 run_in_background: true 启动，但必须跟踪**本次启动的进程**直到结束；只有确认**本次进程退出码为 0**，且本次目标文件 '" + tempDir + "/transcript.txt' 存在并非空，才算成功。脚本先写本次独有的暂存文件，校验后才原子发布目标文件；**不要仅凭文件非空/稳定或日志出现 DONE 判断完成，不要自行复用其他任务或上次运行的逐字稿**。仅脚本可以按音频 SHA-256、环境/模型快照和解码配置验证逐字稿缓存，命中后仍发布本次产物；缓存不能代替后续精读和独立原文核验。记录脚本输出的 metrics（cacheHit、实际 device、阶段毫秒耗时），不要推测不存在的计时。设合理超时，超时则终止本次进程；超时/非 0 退出/空产物均按降级处理；\n" +
+          "  ⑤ 成功后读取 transcript.txt 作为全文（textSource=transcription）。脚本自举：uv 建 Python 3.12 环境 + 镜像装 faster-whisper + hf-mirror 下模型并缓存；Windows/macOS/Linux 是**同一份实现**。**⚠️ 首次转写会先下载模型（small 约 484MB，hf-mirror，非 GitHub）并较慢——先向用户说明这是正常的一次性下载，勿当成卡死；之后复用模型文件，新音频仍需推理。**\n" +
           "  ⑥ 若 `node` 不在 PATH（macOS 从图形界面启动时常见），先用 `command -v node` 确认；确认不可用就直接降级，不要为了跑转写脚本去安装 Node。"
       );
     } else {

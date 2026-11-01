@@ -100,3 +100,52 @@ test('video timestamps propagate to transcription and platform subtitle instruct
   assert.ok(subtitleOnly.includes('YouTube CC 保留每条 cue 的 start/end'));
   assert.ok(!subtitleOnly.includes('--timestamps'));
 });
+
+test('runner timings consume lazy inference and report actual device and requested threads', { skip: !python && 'Python unavailable' }, function (t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'drs-runner-metrics-'));
+  t.after(() => {
+    assert.equal(path.dirname(path.resolve(dir)), path.resolve(os.tmpdir()));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const override = [
+    'import time',
+    'class TimedModel:',
+    '    def __init__(self, *args, **kwargs):',
+    '        assert kwargs["cpu_threads"] == 8',
+    '        assert kwargs["compute_type"] == "int8"',
+    '        self.model = types.SimpleNamespace(device="cpu")',
+    '    def transcribe(self, *args, **kwargs):',
+    '        assert kwargs == {"vad_filter": True, "language": "en"}',
+    '        def lazy():',
+    '            time.sleep(0.04)',
+    '            yield types.SimpleNamespace(start=1.0, end=2.0, text="Actual inference")',
+    '            if os.environ.get("DRS_TEST_LAZY_FAILURE"): raise RuntimeError("inference interrupted")',
+    '        return lazy(), types.SimpleNamespace(duration=3.0, duration_after_vad=1.0)',
+    'fake.WhisperModel = TimedModel'
+  ].join('\n');
+  const reportFile = path.join(dir, 'segments.json');
+  const result = spawnSync(python, ['-c', stub + '\n' + override + '\n' + transcribe.PY_RUNNER], {
+    encoding: 'utf8', timeout: 10000,
+    env: { ...process.env, DRS_AUDIO: 'mock', DRS_OUT: path.join(dir, 'out.txt'),
+      DRS_MODEL: 'small', DRS_DEVICE: 'auto', DRS_LANG: 'en', DRS_CPU_THREADS: '8', DRS_SEGMENTS: reportFile }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
+  assert.equal(report.device, 'cpu');
+  assert.equal(report.cpuThreads, 8);
+  assert.equal(report.duration, 3);
+  assert.equal(report.durationAfterVad, 1);
+  assert.ok(report.timings.inference >= 35, 'the lazy generator is included in inference timing');
+  assert.ok(report.timings.total >= report.timings.inference);
+  assert.equal(require('../lib/transcript-cache').render(report.segments, true), '[00:00:01.000 --> 00:00:02.000] Actual inference');
+  const failedOutput = path.join(dir, 'failed.txt');
+  const failedReport = path.join(dir, 'failed.json');
+  const interrupted = spawnSync(python, ['-c', stub + '\n' + override + '\n' + transcribe.PY_RUNNER], {
+    encoding: 'utf8', timeout: 10000,
+    env: { ...process.env, DRS_AUDIO: 'mock', DRS_OUT: failedOutput, DRS_MODEL: 'small',
+      DRS_DEVICE: 'cpu', DRS_LANG: 'en', DRS_CPU_THREADS: '8', DRS_SEGMENTS: failedReport, DRS_TEST_LAZY_FAILURE: '1' }
+  });
+  assert.equal(interrupted.status, 1);
+  assert.equal(fs.existsSync(failedOutput), false, 'a failed lazy iterator must not leave a partial transcript');
+  assert.equal(fs.existsSync(failedReport), false, 'a failed lazy iterator must not leave cache evidence');
+});
