@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-11-01
+
+无字幕视频新增逐字稿内容缓存、转写阶段计时和 CPU 线程配置，保留默认精读与原文核验门槛。
+
 ### Added
 
 - **逐字稿内容缓存**：默认按音频 SHA-256、受管理的本地模型快照、安装环境和固定解码配置复用真实分段；切换时间戳展示无需重复推理。缓存命中仍原子发布本次任务产物，后续精读和独立原文核验不跳过。自定义本地模型、环境不明、损坏/过期记录和失败/空结果不复用。
@@ -14,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Verification
 
-- Windows CPU 对照一段自制 58.439 秒中文语音：原始 runner 24.517 秒，新 runner 强制推理 23.118 秒，命中缓存并开启时间戳 0.098 秒，8 线程且禁用缓存 21.275 秒。默认与 8 线程文本均与原结果逐字一致；缓存切换时间戳后正文一致。单样本结果仅覆盖 ASR，不代表完整精读或其他资料的加速比例。详见 [ASR 基准记录](docs/ASR_BENCHMARK.md)。
+- Windows CPU 对照一段自制 58.439 秒中文语音：原始 runner 24.517 秒，新 runner 强制推理 23.118 秒，命中缓存并开启时间戳 0.098 秒，8 线程且禁用缓存 21.275 秒。默认与 8 线程文本均与原结果逐字一致；缓存切换时间戳后正文一致。单样本结果仅覆盖 ASR，不代表完整精读或其他资料的加速比例。详见 [ASR 基准记录](https://github.com/PensiveFei/deep-read-summarize/blob/v0.5.0/docs/ASR_BENCHMARK.md)。
 - ASR 错词仍可能进入逐字稿；笔记 `qualityPassed` 不等于音轨听写准确。GPU、批量推理和常驻模型未自动启用，仍需独立的音频质量与资源基准。
 
 ### Fixed
