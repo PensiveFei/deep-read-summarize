@@ -222,3 +222,19 @@ test('compiled workflow forwards thread and transcript-cache options to acquisit
   assert.equal(result.stage, 'fetch');
   assert.match(fetchPrompt, /--cpu-threads 6 --no-cache/);
 });
+
+test('managed model identity resolves the hub alias as well as its files (macOS /var)', t => {
+  const h = harness(t), hub = path.join(h.root, 'hf', 'hub');
+  const canonicalHub = path.join(h.dir, 'canonical-hub');
+  const fakeFs = Object.create(fs);
+  fakeFs.realpathSync = file => {
+    const relative = path.relative(hub, file);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+      ? path.join(canonicalHub, relative) : fs.realpathSync(file);
+  };
+  const mod = { exports: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../lib/transcript-cache.js'), 'utf8'), {
+    module: mod, require: name => name === 'node:fs' ? fakeFs : require(name), Buffer
+  });
+  assert.match(mod.exports.runtimeIdentity(h.root, 'small'), /^[a-f0-9]{64}$/);
+});
