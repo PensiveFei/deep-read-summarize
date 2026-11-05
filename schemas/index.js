@@ -35,6 +35,18 @@ const fetchResultSchema = {
       required: [],
       additionalProperties: true
     },
+    balancePlan: {
+      type: "object",
+      properties: {
+        totalLines: { type: "number" },
+        candidates: { type: "array", items: {
+          type: "object", properties: {
+            groups: { type: "number" },
+            endLines: { type: "array", items: { type: "number" } }
+          }, required: ["groups", "endLines"], additionalProperties: false
+        } }
+      }, required: ["totalLines", "candidates"], additionalProperties: false
+    },
     chunkPlan: {
       type: "array",
       items: {

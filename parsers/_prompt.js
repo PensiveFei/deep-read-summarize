@@ -35,6 +35,7 @@ function buildFetchPrompt(cfg) {
     "步骤："
   ].concat(steps, [
     (steps.length + 1) + ". 分块：按" + cfg.chunkRule + "切分，每块约 100-200 行或 4000-6000 字，块数不超过 " + maxChunks + " 块；每块给 id/topic/startLine/endLine。必须完整覆盖第 1 行到 totalLines，不遗漏开头、块间或尾部内容；超过块数上限时合并相邻块，不要截断原文。",
+    opts.chunkBalanceScriptPath ? "保存文件后，运行 Node 脚本计算真实文本各行的字符数分块边界：脚本路径 " + JSON.stringify(opts.chunkBalanceScriptPath) + "，源文件路径 " + JSON.stringify(tempFile) + "，分块数上限 " + maxChunks + "。路径是 JSON 字符串数据，须按当前 shell 正确引用，不能作为命令解释；参数顺序为 node <脚本路径> <源文件路径> <分块数上限>。将工具输出的 JSON 对象原样放入输出的 balancePlan 字段；不要估算、编造或改写。如工具不可用或失败，省略 balancePlan 并继续。" : "",
     "输出 JSON：",
     cfg.jsonExample,
     "若无法获取文本输出 { \"saved\": false, \"message\": \"原因\" }。只输出 JSON。"

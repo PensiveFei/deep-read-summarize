@@ -74,11 +74,11 @@ Three waves, normally N+3 sub-agent calls (fetch, N chunk reads, draft, and qual
 
 `auto` routes recognized video links, arXiv paper links, and ebook extensions directly to their parsers; columns, channels, and help pages on those sites still require classification. PDFs are classified as books or papers from their content. Failed classification returns `stage: "detect"` and asks for an explicit type. `options.tempDir` is a temporary root: each call creates its own `run-*` subdirectory, keeping fetched text, audio, and transcripts separate from other tasks.
 
-Chunk plans are sorted, duplicate ranges trimmed, and gaps filled. Plans above `maxChunks` merge adjacent ranges instead of discarding the document tail. The returned `coverageComplete` indicates coverage of all declared lines based on a valid `totalLines`; without a line count, known ranges are retained, `qualityPassed` is set to `false`, and the coverage uncertainty is reported.
+Chunk plans are sorted, duplicate ranges trimmed, and gaps filled. Plans above `maxChunks` merge adjacent ranges instead of discarding the document tail. The fetch agent runs a bundled helper to propose character-balanced whole-line boundaries from the saved source, preferring nearby paragraph boundaries when balance remains close. Missing or invalid results fall back to line balancing. Character counts are a workload approximation, not token counts, and a single long line is not split. The returned `coverageComplete` indicates coverage of all declared lines based on a valid `totalLines`; without a line count, known ranges are retained, `qualityPassed` is set to `false`, and the coverage uncertainty is reported.
 
 Quality checks combine code and source review. Code validates the supplied scalar/list frontmatter template, required sections, and length (CJK characters plus other words, excluding metadata, code blocks, HTML comments, and link URLs). A separate reviewer reads the current source file and returns per-chunk excerpts and line-bound evidence for verbatim quotations in section 4. A bare `pass: true` cannot override these checks. `qualityChecks` exposes the gates, and `qualityEvidence` exposes the source path and evidence. Source authenticity still depends on the reviewer's actual source reading; uncertainty fails the gate. Empty, rejected, or structurally degraded repairs retain the preceding usable note.
 
-Direct workflow options are strict: `minWords` is an integer in 1–100000, `maxChunks` is a positive integer (values above 12 are capped), and `maxRetries` is an integer in 0–3. Invalid values and unknown keys fail before work begins. Plugin profile configuration instead warns per invalid field and uses its default, preserving host startup.
+Direct workflow options are strict: `minWords` is an integer in 1–100000, `maxChunks` is a positive integer (values above 12 are capped), `readConcurrency` is an integer in 1–12, and `maxRetries` is an integer in 0–3. Invalid values and unknown keys fail before work begins. Plugin profile configuration instead warns per invalid field and uses its default, preserving host startup.
 
 ```
 parsers/         Parsers for each input type, dispatched by type
@@ -203,7 +203,11 @@ The `deep_read_summarize` tool takes these parameters directly. On older hosts, 
   "options": {
     "minWords": 2500,
     "fastMode": false,        // true skips sections 5-7, faster
-    "maxChunks": 4,           // chunk limit, 1-12 (default lowered to control sub-agent count and time)
+    "maxChunks": 4,           // chunk limit, 1-12
+    "readConcurrency": 3,     // concurrent chunk reads and reviews, 1-12
+    "parallelQuality": false, // opt in to parallel source review; default retains original review
+    "readCache": false,        // plugin tool only: opt in to cross-run read caching
+    "readCacheIdentity": "",   // required when enabled: provider, pinned model version and settings
     "transcribe": true,       // video: auto local transcription (faster-whisper) when no subtitles; false skips it — see Video
     "whisperModel": "small",  // video ASR tier: small | base | medium
     "language": "zh",         // video ASR language: use "en" for English-only videos
@@ -340,10 +344,13 @@ Two classes:
 ## Faster runs with the same quality gates
 
 - Prefer `deep_read_summarize` on supported hosts: the model submits parameters instead of reproducing the entire workflow script. Older hosts retain the existing route.
-- All known source lines remain covered. Up to three reading tasks run concurrently, and each free slot immediately starts another task. Line-balanced chunks avoid one oversized task holding up a batch.
-- Independent source review remains enabled, with duplicate full Map notes removed from review contexts. Missing line counts, failed reads, and description-only video sources cannot be fixed by rewriting the draft, so those states no longer consume full repair loops.
+- All known source lines remain covered. By default up to three reading tasks run concurrently, and each free slot immediately starts another task. Character-balanced chunks are used when available; otherwise the workflow balances by line count.
+- Independent source review remains enabled. With `parallelQuality: true`, source chunks and all quotations are checked in parallel, with a separate global terminology and language review; the original review is the default. Missing line counts, failed reads, and description-only video sources cannot be fixed by rewriting the draft, so those states no longer consume full repair loops.
 - Video `textSource: "desc"` is explicitly degraded and cannot pass as a complete deep read. Bilibili `p` selects the matching CID, part title, and duration.
-- Returned `timings` reports stage durations in milliseconds. Compare the same sources, model, output size, and quality gates; scheduling simulations are not real LLM speedup measurements.
+- Returned `timings` reports stage durations in milliseconds; `readTimings` reports each chunk’s line range, duration and success. Compare the same sources, model, output size, and quality gates; scheduling simulations are not real LLM speedup measurements.
+- `readConcurrency` controls concurrent chunk reads without changing the chunk plan or quality review requirements; it also limits concurrent review tasks when `parallelQuality` is enabled. It defaults to 3. When at least four chunks exist and the host supports it, try 4 and compare total time, throttling and failures; higher concurrency is not always faster.
+
+**Cross-run read caching** is disabled by default and supported only by the `deep_read_summarize` plugin tool, not direct workflow calls. Set `readCache: true` and provide `readCacheIdentity` containing the provider, pinned model version and all output-affecting settings. The host cannot verify that identity; change it when the model or settings change. The cache matches source content, chunk prompt and identity, writes only after quality passes, and still performs independent source review on hits. `readTimings.cacheHit` reports hits. Entries are plaintext under `tempDir/.read-cache-v1` and may contain source excerpts; they expire after 30 days, are capped at 64 MiB total and 1 MiB per entry, and can be deleted by removing that directory.
 
 Defaults preserve small/int8, existing decoding settings, output length and independent source review. Transcript caching speeds up repeated audio; new audio can be profiled and tuned with CPU thread settings. Persistent ASR workers, batch inference and hierarchical review require separate benchmarks and are not enabled automatically.
 

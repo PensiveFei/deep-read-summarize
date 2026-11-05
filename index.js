@@ -21,6 +21,7 @@ const workflow = require('./workflow');
 const parsers = require('./parsers');
 const schemas = require('./schemas');
 const { DEFAULT_OPTIONS, normalizeWorkflowOptions } = require('./lib/options');
+const readCache = require('./lib/read-cache');
 
 module.exports.name = 'deep-read-summarize';
 module.exports.inject = ['skills'];
@@ -120,14 +121,41 @@ function readingTool(engine, defaults, registry) {
       const options = normalizeWorkflowOptions(Object.assign({}, defaults, args.options));
       if (!exec || !exec.agent) throw new Error('deep_read_summarize requires a calling agent');
       if (exec.signal && exec.signal.aborted) throw new Error('deep_read_summarize was cancelled before start');
-      const run = engine.start({ script: workflow.buildSelfContainedScript(registry), meta: workflow.meta,
-        args: { input: args.input, type: args.type || 'auto', options: options }, parent: exec.agent, signal: exec.signal });
-      try {
-        const result = await run.result;
-        if (result.stopReason !== 'completed') throw new Error('deep_read_summarize ' + result.stopReason + ': ' + (result.error || 'workflow did not complete'));
-        if (!result.value || typeof result.value !== 'object' || Array.isArray(result.value)) throw new Error('deep_read_summarize returned an invalid workflow result');
-        return result.value;
-      } finally { await run.dispose(); }
+      const startArgs = { input: args.input, type: args.type || 'auto', options: options };
+      const script = workflow.buildSelfContainedScript(registry);
+      async function runWorkflow(runArgs) {
+        const run = engine.start({ script: script, meta: workflow.meta,
+          args: runArgs, parent: exec.agent, signal: exec.signal });
+        try {
+          const result = await run.result;
+          if (result.stopReason !== 'completed') throw new Error('deep_read_summarize ' + result.stopReason + ': ' + (result.error || 'workflow did not complete'));
+          if (!result.value || typeof result.value !== 'object' || Array.isArray(result.value)) throw new Error('deep_read_summarize returned an invalid workflow result');
+          return result.value;
+        } finally { await run.dispose(); }
+      }
+      if (!options.readCache) return runWorkflow(startArgs);
+      const started = Date.now();
+      const prepared = await runWorkflow(Object.assign({}, startArgs, { __cachePrepare: true }));
+      if (!prepared.__cachePrepared) return prepared;
+      if (!Array.isArray(prepared.chunkPrompts) || !Array.isArray(prepared.chunkPlan) || prepared.chunkPrompts.length !== prepared.chunkPlan.length || prepared.chunkPrompts.length > 12 || typeof prepared.tempFile !== 'string' || typeof prepared.tempDir !== 'string' || typeof prepared.selectedType !== 'string' || !prepared.fetched || typeof prepared.fetched !== 'object') throw new Error('deep_read_summarize returned invalid cache preparation');
+      const digest = readCache.sourceHash(options.tempDir, prepared.tempDir, prepared.tempFile);
+      const keys = prepared.chunkPrompts.map(function (prompt) { return readCache.keyFor(digest, options.readCacheIdentity, prompt, prepared.tempFile); });
+      const hits = keys.map(function (key) { return key ? readCache.read(options.tempDir, key) : null; });
+      const resume = { tempDir: prepared.tempDir, selectedType: prepared.selectedType, fetched: prepared.fetched, prompts: prepared.chunkPrompts, hits: hits };
+      if (exec.signal && exec.signal.aborted) throw new Error('deep_read_summarize was cancelled before cache resume');
+      const result = await runWorkflow(Object.assign({}, startArgs, { __cacheResume: resume }));
+      // Never use notes matched against a source that changed during the run.
+      if (digest && readCache.sourceHash(options.tempDir, prepared.tempDir, prepared.tempFile) !== digest) return runWorkflow(startArgs);
+      if (!(exec.signal && exec.signal.aborted) && digest && result.qualityPassed && Array.isArray(result.__cacheReads)) {
+        for (let i = 0; i < keys.length; i++) if (keys[i] && !hits[i] && readCache.portable(result.__cacheReads[i], prepared.tempDir)) readCache.write(options.tempDir, keys[i], result.__cacheReads[i]);
+      }
+      delete result.__cacheReads;
+      if (result.timings && prepared.timings) {
+        result.timings.detect += prepared.timings.detect || 0;
+        result.timings.fetch += prepared.timings.fetch || 0;
+        result.timings.total = Date.now() - started;
+      }
+      return result;
     }
   };
 }

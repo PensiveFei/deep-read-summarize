@@ -27,7 +27,8 @@ async function run(config = {}) {
   const plan = config.plan || [{ id: 1, topic: 'all', startLine: 1, endLine: 4 }];
   let draft;
   const result = await execute({ input: 'fixture', type: config.type || 'paper', options: {
-    minWords: 1, fastMode: true, maxRetries: config.maxRetries || 0, maxChunks: config.maxChunks || 4
+    minWords: 1, fastMode: true, maxRetries: config.maxRetries || 0, maxChunks: config.maxChunks || 4,
+    readConcurrency: config.readConcurrency === undefined ? 3 : config.readConcurrency
   } }, () => {}, async (prompt, options) => {
     calls.push({ prompt, label: options.label });
     if (config.onAgent) {
@@ -207,6 +208,40 @@ test('audit: a free Map slot starts the next chunk before the slow first chunk c
   assert.equal(result.failedChunks, 0);
   const prompt = calls.find(call => call.label === '汇总成稿').prompt;
   for (let i = 0; i < 6; i++) assert.match(prompt, new RegExp('块 ' + (i + 1) + '（原文行 ' + (i * 10 + 1) + '-' + ((i + 1) * 10) + '） =====\\nnotes-for-line-' + (i * 10 + 1)));
+});
+
+test('audit: configurable concurrency starts four chunks together and preserves per-chunk results and timings', { timeout: 2000 }, async () => {
+  const plan = Array.from({ length: 6 }, (_, index) => ({ id: index + 1, topic: 'part ' + (index + 1), startLine: index * 10 + 1, endLine: (index + 1) * 10 }));
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let active = 0, maximumActive = 0, started = 0;
+  const { result, calls } = await run({ plan, maxChunks: 6, readConcurrency: 4, onAgent: async (prompt, options) => {
+    if (options.label !== '精读块') return;
+    active++;
+    maximumActive = Math.max(maximumActive, active);
+    started++;
+    if (started === 4) release();
+    await gate;
+    active--;
+    const line = Number(prompt.match(/offset=(\d+)/)[1]);
+    if (line === 21) throw new Error('temporary failure');
+    return 'notes-for-line-' + line;
+  } });
+  assert.equal(maximumActive, 4);
+  assert.equal(result.failedChunks, 1);
+  assert.equal(result.qualityPassed, false);
+  assert.equal(result.readTimings.length, 6);
+  for (let i = 0; i < 6; i++) {
+    const timing = result.readTimings[i];
+    assert.equal(timing.chunkId, i + 1);
+    assert.equal(timing.startLine, i * 10 + 1);
+    assert.equal(timing.endLine, (i + 1) * 10);
+    assert.ok(Number.isFinite(timing.elapsedMs) && timing.elapsedMs >= 0);
+    assert.equal(timing.succeeded, i !== 2);
+  }
+  const prompt = calls.find(call => call.label === '汇总成稿').prompt;
+  assert.match(prompt, /块 3（原文行 21-30） =====\n精读失败/);
+  assert.match(prompt, /块 4（原文行 31-40） =====\nnotes-for-line-31/);
 });
 
 test('audit: line-balanced workers split a long topic without losing or duplicating source lines', async () => {

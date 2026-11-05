@@ -47,6 +47,7 @@ async function runWorkflow(args, config = {}) {
         metadata: { title: 'Regression fixture' }, chunkPlan
       };
       if (config.omitTotalLines !== true) fetched.totalLines = totalLines;
+      if (config.balancePlan !== undefined) fetched.balancePlan = config.balancePlan;
       return fetched;
     }
     if (label === '精读块') return 'Document findings for ' + prompt.match(/offset=\d+, limit=\d+/)[0];
@@ -366,4 +367,34 @@ test('B03 preserving coverage does not exceed the hard twelve-agent ceiling', as
   const run = await runWorkflow({ input: 'fixture', type: 'paper', options: { maxChunks: 99 } },
     { totalLines: 3000, chunkPlan: consecutivePlan(30, 100) });
   assertCompleteCoverage(run, 3000, 12);
+});
+
+
+test('character-balanced candidates preserve ordered, complete source coverage', async () => {
+  const plan = Array.from({ length: 4 }, (_, i) => ({ id: i + 1, topic: 'part', startLine: i * 25 + 1, endLine: (i + 1) * 25 }));
+  const balancePlan = { totalLines: 100, candidates: [{ groups: 4, endLines: [10, 40, 70, 100] }] };
+  const run = await runWorkflow({ input: 'fixture', type: 'paper', options: { maxChunks: 4 } }, { totalLines: 100, chunkPlan: plan, balancePlan });
+  assertCompleteCoverage(run, 100, 4);
+  assert.deepEqual(run.calls.filter(call => call.label === '精读块').map(call => readRange(call.prompt)), [
+    { startLine: 1, endLine: 10 }, { startLine: 11, endLine: 40 },
+    { startLine: 41, endLine: 70 }, { startLine: 71, endLine: 100 }
+  ]);
+});
+
+test('stale or invalid character-balanced candidates fall back without gaps', async () => {
+  const plan = Array.from({ length: 4 }, (_, i) => ({ id: i + 1, topic: 'part', startLine: i * 25 + 1, endLine: (i + 1) * 25 }));
+  const invalid = [
+    { totalLines: 99, candidates: [{ groups: 4, endLines: [10, 40, 70, 99] }] },
+    { totalLines: 100, candidates: [{ groups: 4, endLines: [10, 10, 70, 100] }] },
+    { totalLines: 100, candidates: [{ groups: 4, endLines: [10, 40, 70, 99] }] },
+    { totalLines: 100, candidates: [{ groups: 4, endLines: [10, 40, 70, 100] }, { groups: 4, endLines: [11, 40, 70, 100] }] }
+  ];
+  for (const balancePlan of invalid) {
+    const run = await runWorkflow({ input: 'fixture', type: 'paper', options: { maxChunks: 4 } }, { totalLines: 100, chunkPlan: plan, balancePlan });
+    assertCompleteCoverage(run, 100, 4);
+    assert.deepEqual(run.calls.filter(call => call.label === '精读块').map(call => readRange(call.prompt)), [
+      { startLine: 1, endLine: 25 }, { startLine: 26, endLine: 50 },
+      { startLine: 51, endLine: 75 }, { startLine: 76, endLine: 100 }
+    ]);
+  }
 });

@@ -77,7 +77,7 @@ function buildSelfContainedScript(parserRegistry = parsers.registry) {
   if (!RAW_SCRIPT.includes(marker)) {
     throw new Error("workflow script marker not found: " + marker);
   }
-  const runtimePaths = { transcribeScript: fs.realpathSync(path.join(__dirname, 'scripts', 'transcribe.js')) };
+  const runtimePaths = { transcribeScript: fs.realpathSync(path.join(__dirname, 'scripts', 'transcribe.js')), chunkBalanceScript: fs.realpathSync(path.join(__dirname, 'scripts', 'chunk-balance.js')) };
   return 'const __runtimePaths = ' + JSON.stringify(runtimePaths) + ';\n' +
     'const normalizeWorkflowOptions = ' + normalizeWorkflowOptions.toString() + ';\n' +
     'const __quality = { checkNoteStructure: ' + quality.checkNoteStructure.toString() +

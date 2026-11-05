@@ -24,12 +24,19 @@ test('B07 invalid numeric options reject nonfinite, fractional, negative and exc
   for (const [key, values] of [
     ['minWords', [0, -1, 1.5, NaN, Infinity, 100001, '2500']],
     ['maxChunks', [0, -1, 1.5, NaN, Infinity, '4']],
+    ['readConcurrency', [0, -1, 1.5, NaN, Infinity, 13, '4']],
     ['maxRetries', [-1, 0.5, NaN, Infinity, 4, '0']]
   ]) {
     for (const value of values) assert.throws(function () { normalizeWorkflowOptions({ [key]: value }); }, /\[FATAL\] options\./);
   }
   assert.equal(normalizeWorkflowOptions({ maxRetries: 0 }).maxRetries, 0);
   assert.equal(normalizeWorkflowOptions({ maxChunks: 1 }).maxChunks, 1);
+  assert.equal(normalizeWorkflowOptions().readConcurrency, 3);
+  assert.equal(normalizeWorkflowOptions().parallelQuality, false);
+  assert.equal(normalizeWorkflowOptions({ parallelQuality: true }).parallelQuality, true);
+  assert.throws(function () { normalizeWorkflowOptions({ parallelQuality: 'true' }); }, /\[FATAL\] options\.parallelQuality/);
+  assert.equal(normalizeWorkflowOptions({ readConcurrency: 4 }).readConcurrency, 4);
+  assert.equal(normalizeWorkflowOptions({ readConcurrency: 12 }).readConcurrency, 12);
 });
 
 test('B07 options must be an object containing known keys with valid booleans, paths and enumerations', function () {

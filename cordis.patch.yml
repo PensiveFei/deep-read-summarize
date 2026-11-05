@@ -20,6 +20,10 @@
 #     minWords: 2500             # minimum output length (default: 2500)
 #     fastMode: false            # skip sections 5-7 for speed (default: false)
 #     maxChunks: 4               # chunk cap; also caps sub-agent count (1-12, default: 4)
+#     readConcurrency: 3         # concurrent chunk reads and reviews (1-12, default: 3)
+#     parallelQuality: false      # opt in to parallel independent source review
+#     readCache: false             # plugin tool only; cross-run cache is opt-in
+#     readCacheIdentity: ""         # required when enabled: provider, pinned model and settings
 #     transcribe: true           # video: auto-transcribe when no subtitles (default: true)
 #     requireCitations: true     # key conclusions must cite source location (default: true)
 #     includeTimestamps: false   # video timestamps (default: false)
