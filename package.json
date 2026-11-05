@@ -1,6 +1,6 @@
 {
   "name": "deep-read-summarize",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Deep reading & summarization for DSH: books/papers/videos/web → structured Markdown notes with YAML frontmatter. Plugin parsers, MapReduce deep-read, JSON Schema-constrained sub-tasks.",
   "type": "commonjs",
   "main": "index.js",
