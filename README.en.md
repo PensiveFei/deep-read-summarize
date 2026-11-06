@@ -25,6 +25,10 @@ Content is split into chunks, read in parallel by multiple sub-agents, then merg
 
 ## What it looks like
 
+**Read three real historical notes (Chinese):** [emotional intelligence paper](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/emotional-intelligence.md) · [chain-of-thought paper](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/chain-of-thought.md) · [introductory LLM video](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/intro-to-llms-video.md).
+
+The paper notes have records of early project runs; the video note’s generation method is unconfirmed. Their model, project version, and runtime were not recorded, so these are not a performance claim for the current release. See the [examples guide](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/README.md) for provenance, limitations, and edits made for publication.
+
 (Images use absolute GitHub URLs so they render on npm too; the PNGs ship with the repository, not inside the npm package.)
 
 | Deep-read paper note | Video note metadata |
@@ -367,7 +371,7 @@ Programmatic `lib/cache` callers: URL trailing slashes, explicit empty queries, 
 - Fetching videos/web pages makes external requests, executed by sub-agents under DSH's sandbox and approval policy; don't let a model run arbitrary scripts unattended.
 - Sub-agents need appropriate permissions to write files; if permissions are insufficient, the workflow returns the content and the main agent handles persistence.
 - **Local transcription**: video transcription (faster-whisper) runs **locally**; audio/subtitles **do not leave your machine**; network requests to the corresponding platforms are made only when fetching video metadata/subtitles/audio.
-- This repo contains only the pipeline itself: workflow definitions, parser code, prompt templates, schemas. **It contains no extracted copyrighted content.** Test fixtures are self-written public-domain fables. When you process copyrighted material with this workflow, responsibility for the output is yours.
+- The repository contains the pipeline and a few historical reading-note examples. The cited papers, video, and short quotations remain subject to their respective rights and permissions. Test fixtures are self-written public-domain fables. Check the terms of your sources and intended use when processing copyrighted material.
 
 ---
 

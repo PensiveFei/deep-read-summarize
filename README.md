@@ -25,6 +25,10 @@
 
 ## 实际效果
 
+**查看三篇真实历史笔记：** [情绪智力论文](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/emotional-intelligence.md) · [思维链论文](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/chain-of-thought.md) · [LLM 入门视频](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/intro-to-llms-video.md)。
+
+两篇论文笔记有早期项目运行记录；视频笔记的生成方式尚未确认。模型、版本和运行耗时均未记录；这些示例并非对当前版本的性能承诺。引用、时间戳与公开副本的处理方式见[示例说明](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/README.md)。
+
 （图用 GitHub 绝对地址，npm 页面同样能显示；图片本身不打进 npm 包，只随仓库分发）
 
 | 精读论文 | 视频笔记（元信息） |
@@ -366,7 +370,7 @@ Token 用量取决于原文长度、分块数和成稿篇幅。原文核验会�
 - 抓取视频/网页会发起外部请求，由子代理在 DSH 的沙箱和审批策略下执行；不要让模型无人值守地跑任意脚本。
 - 子代理写文件需要相应权限；如果权限不够，workflow 会把内容返回，由主代理负责落盘。
 - **本地转写**：视频转写（faster-whisper）在**本机**运行，音频/字幕**不出本地**；抓取视频元数据/字幕/音频时才会向对应平台发起网络请求。
-- 这个仓库只有流程本身：workflow 定义、解析器代码、提示词模板、schema。**不含任何受版权保护内容的提取结果。** 测试用的 fixture 是自写的公共领域寓言。用本工作流处理有版权的材料时，产出物的使用责任在你。
+- 仓库包含流程代码、提示词和少量历史阅读笔记示例；示例中的论文、视频与短引文仍受各自权利和授权条件约束。测试 fixture 是自写的公共领域寓言。用本工作流处理有版权的材料时，请自行确认来源和产出物的使用条件。
 
 ---
 
