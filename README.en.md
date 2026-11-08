@@ -7,407 +7,152 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/PensiveFei/deep-read-summarize/ci.yml)](https://github.com/PensiveFei/deep-read-summarize/actions/workflows/ci.yml)
 [![npm total downloads](https://badgen.net/npm/dt/deep-read-summarize)](https://www.npmjs.com/package/deep-read-summarize)
 
-> **Disclaimer**: This is an **unofficial third-party tool**. It is not affiliated with, endorsed by, or sponsored by DeepSeek or the DeepSeek Harness project. "DeepSeek" and "DeepSeek Harness" are trademarks of their respective owners. This project only orchestrates the workflow tool available in your DSH environment; it does not redistribute any DeepSeek software.
+Turn a paper, book, video, or web page into a **Markdown reading note you can keep, edit, and check against the source**.
 
-> **⚠️ Most importantly: this is an "assisted deep-reading" tool, not a substitute for your own learning.** It helps you quickly extract, summarize, and structure what you read, but **real understanding, thinking, and critique must still come from you**. Always treat the original source as authoritative — do not mistake the generated notes for the learning itself.
+This third-party plugin runs in [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). It attempts to retrieve the source text, reads long material in chunks, and combines the results into a structured note with YAML frontmatter. You can use the note in Obsidian, Logseq, or another Markdown tool.
 
-A deep-reading workflow for DSH (DeepSeek Harness): feed it a book, a paper, a video link, or a web page, and it produces a structured Markdown note (YAML frontmatter — ready for Obsidian, Logseq, static-site content folders, or any Markdown editor).
+[See real notes](#see-the-notes) · [Get started](#get-started) · [Quality and limitations](#quality-and-limitations) · [Common options](#common-options)
 
-Content is split into chunks, read in parallel by multiple sub-agents, then merged into a Markdown file with YAML frontmatter. Key conclusions carry citations to the original source, and a quality check runs before the final draft.
+> AI-generated notes can omit or misinterpret information. Use them as a starting point for reading, and check important claims and quotations against the source.
 
-> If you run into problems, or see how it could be better, **feel free to open a GitHub issue**.
+## See the notes
 
-> Note: DSH is currently a developer preview and its interfaces may change. This repo targets a specific version of the workflow-tool semantics — see [Compatibility](#compatibility).
+- 📄 [Paper: Emotional Intelligence of Large Language Models](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/emotional-intelligence.md)
+- 📄 [Paper: Chain-of-Thought Prompting](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/chain-of-thought.md)
+- 🎬 [Video: Andrej Karpathy's introduction to LLMs](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/intro-to-llms-video.md)
 
-> **Platforms**: Windows / macOS / Linux are equally supported (since 0.3.9) — see [Platform support](#platform-support) below.
+These are historical notes supplied by the maintainer, in Chinese. The paper notes have records of early project runs; how the video note was generated has not been confirmed. Their model, project version, and runtime were not recorded, so they are not performance claims for the current release. Some quotations and timestamps have been spot-checked, and edits to the public copies are documented in the [examples guide](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/README.md).
 
----
-
-## What it looks like
-
-**Read three real historical notes (Chinese):** [emotional intelligence paper](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/emotional-intelligence.md) · [chain-of-thought paper](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/chain-of-thought.md) · [introductory LLM video](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/intro-to-llms-video.md).
-
-The paper notes have records of early project runs; the video note’s generation method is unconfirmed. Their model, project version, and runtime were not recorded, so these are not a performance claim for the current release. See the [examples guide](https://github.com/PensiveFei/deep-read-summarize/blob/main/examples/README.md) for provenance, limitations, and edits made for publication.
-
-(Images use absolute GitHub URLs so they render on npm too; the PNGs ship with the repository, not inside the npm package.)
-
-| Deep-read paper note | Video note metadata |
-| --- | --- |
-| ![Paper note](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-paper-note-cot.png) | ![Video note metadata](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-video-note-metadata.png) |
-
-| Video note action items | In-chat digest |
-| --- | --- |
-| ![Video note action items](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-video-note-actions.png) | ![In-chat digest](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-in-chat-digest.png) |
-
----
+![A structured reading note for a paper](https://raw.githubusercontent.com/PensiveFei/deep-read-summarize/main/docs/showcase/showcase-paper-note-cot.png)
 
 ## What it does
 
-- Books (PDF/EPUB/MOBI), papers (arXiv/PDF/HTML), videos (**subtitles first, auto-transcription when there are none** — produces a full transcript for deep reading), web pages
-- Long content is chunked and read in parallel by sub-agents, then merged
-- The fetch/chunk plan and the quality check are constrained by JSON Schema, so their output is stable and machine-readable
-- Chunk count — and therefore sub-agent count — is enforced by `maxChunks` (a runaway plan blows the per-call time limit)
-- Key citations must carry page/chapter/paragraph references to reduce fabrication
-- Configuration errors abort immediately; a chunk that fails to parse is skipped and marked as a gap
-- Output is **standard Markdown + YAML frontmatter**: the body is plain CommonMark (no wikilinks, no callouts), so Obsidian (with Dataview), Logseq, Jekyll / Hugo / Astro content folders and any Markdown editor can consume it directly
+| You provide | The workflow attempts to retrieve | You receive |
+| --- | --- | --- |
+| A book: PDF, EPUB, MOBI | Text and chapters | A reading note organized by topic |
+| A paper: arXiv, PDF, HTML | Paper text and structure | Research question, method, findings, and limitations |
+| A video link | Subtitles first; local transcription when needed and available | A breakdown based on the text obtained |
+| A web page | Page text | Key points, concepts, and source information |
 
----
+Extraction depends on source accessibility, available tools, the model, and host permissions. Scanned PDFs generally need OCR first; the workflow does not provide automatic OCR. Complex formulas, diagrams, and poor-quality captions or audio may also need manual handling.
 
-## Structure
+Notes typically include an overview, structural breakdown, glossary, key quotations, critical analysis, and applications. Their contents are model-generated and may differ between inputs and configurations.
 
-```
-Input (link or file path)
-  │
-  ▼
-Parser registry ── book / paper / video / web
-  │
-  ▼
-Wave 1  Fetch content → write temp file → build chunk plan
-  │
-  ▼
-Wave 2  N sub-agents deep-read chunks in parallel (Map)
-  │
-  ▼
-Wave 3  Merge draft + quality check (Reduce)
-  │
-  ▼
-Markdown note
-```
+## Get started
 
-Three waves, normally N+3 sub-agent calls (fetch, N chunk reads, draft, and quality check). In `auto` mode, ambiguous PDFs, unfamiliar web pages, and text inputs require one additional lightweight classification call. An explicit `type` skips classification.
+### 1. Install the plugin
 
-`auto` routes recognized video links, arXiv paper links, and ebook extensions directly to their parsers; columns, channels, and help pages on those sites still require classification. PDFs are classified as books or papers from their content. Failed classification returns `stage: "detect"` and asks for an explicit type. `options.tempDir` is a temporary root: each call creates its own `run-*` subdirectory, keeping fetched text, audio, and transcripts separate from other tasks.
-
-Chunk plans are sorted, duplicate ranges trimmed, and gaps filled. Plans above `maxChunks` merge adjacent ranges instead of discarding the document tail. The fetch agent runs a bundled helper to propose character-balanced whole-line boundaries from the saved source, preferring nearby paragraph boundaries when balance remains close. Missing or invalid results fall back to line balancing. Character counts are a workload approximation, not token counts, and a single long line is not split. The returned `coverageComplete` indicates coverage of all declared lines based on a valid `totalLines`; without a line count, known ranges are retained, `qualityPassed` is set to `false`, and the coverage uncertainty is reported.
-
-Quality checks combine code and source review. Code validates the supplied scalar/list frontmatter template, required sections, and length (CJK characters plus other words, excluding metadata, code blocks, HTML comments, and link URLs). A separate reviewer reads the current source file and returns per-chunk excerpts and line-bound evidence for verbatim quotations in section 4. A bare `pass: true` cannot override these checks. `qualityChecks` exposes the gates, and `qualityEvidence` exposes the source path and evidence. Source authenticity still depends on the reviewer's actual source reading; uncertainty fails the gate. Empty, rejected, or structurally degraded repairs retain the preceding usable note.
-
-Direct workflow options are strict: `minWords` is an integer in 1–100000, `maxChunks` is a positive integer (values above 12 are capped), `readConcurrency` is an integer in 1–12, and `maxRetries` is an integer in 0–3. Invalid values and unknown keys fail before work begins. Plugin profile configuration instead warns per invalid field and uses its default, preserving host startup.
-
-```
-parsers/         Parsers for each input type, dispatched by type
-  book.js        Books: PDF/EPUB/MOBI text extraction, chapter chunking
-  paper.js       Papers: arXiv/PDF/HTML structure detection
-  video.js       Video: full transcript (subtitles first; auto-transcribe via scripts/transcribe.js when none)
-  web.js         Web pages: main-text extraction
-  index.js       Registry: parser discovery and fallback
-schemas/         JSON Schema for the output contract (injected into the script by workflow.js - single source of truth)
-scripts/         lint (incl. line-ending/whitespace hygiene), security checks, cross-platform transcription bootstrap
-lib/             Small standalone helpers
-  cache.js         input fingerprint and idempotency records (for callers driving the workflow themselves -- the
-                   workflow sandbox has no filesystem, so it cannot use this)
-  workflow-script.txt  the workflow script body (plain text: read and edit it directly, no escaping involved)
-tests/           tests and validation scripts (**not published to npm**, repo only)
-workflow.js      the workflow meta and assembly logic (parser inlining, schema injection)
-```
-
-> The script body lives in `lib/workflow-script.txt` on purpose: this file was corrupted twice by "escaping on top of escaping". It is plain text now, so reading and editing it needs no encoding step.
-
-To override or add a parser, use the package's `custom-parsers/` directory (included in npm packaging), or set the plugin-level `config.customParsersDir` to your own directory. This is not a workflow option. Per-profile directories remain isolated, and rebuilding skill content uses the current registry, including programmatic registrations. Parsers expose `name`, `types`, and `buildPrompt(input, opts)`; registered types are inlined into the workflow and its schema.
-
-File parsers bundle their CommonJS modules and literal relative `.js`, `.cjs`, and `.json` dependencies, preserving module constants, helpers, method shorthand, and cycles. Acorn parses JavaScript during script construction and is installed automatically by npm; it does not run in the workflow sandbox. Node built-ins, external packages, and dynamic `require`/`import` are unsupported in sandbox parsers and fail at build time. Programmatically registered functions must be self-contained; use a file parser for module closures.
-
----
-
-## Platform support
-
-**Windows / macOS / Linux are equally supported** (since 0.3.9). The plugin itself only needs Node (which DSH ships); the extra tools each input type may use are installed per platform:
-
-- **Book / paper PDF** → `pdftotext` (poppler): macOS `brew install poppler`, Windows `winget install poppler`, Debian/Ubuntu `apt install poppler-utils`
-- **Bilibili subtitles / audio** → `curl`: already present on Windows 10+, macOS and Linux — nothing to install
-- **YouTube subtitles** → `yt-dlp`: macOS `brew install yt-dlp`, Windows `winget install yt-dlp.yt-dlp`, any platform `pip install -U yt-dlp`
-- **Transcription when there are no subtitles** → `uv` (the script bootstraps a Python 3.12 env and installs faster-whisper): macOS `brew install uv`, Windows `winget install astral-sh.uv`, or the official installer script on macOS / Linux (hand `curl -LsSf https://astral.sh/uv/install.sh` to `sh`)
-
-Further notes:
-
-- Transcription is the **only** part that needs an extra toolchain, and all three platforms share one Node script and one command: `node scripts/transcribe.js --audio <file> --out <txt>`.
-- Transcription runs on **CPU** by default, so Apple Silicon / Intel Macs and Linux need no CUDA; GPU support needs a CUDA runtime and `options.device: "auto"` will try it and fall back to CPU on failure.
-- Cache location per platform: macOS `~/Library/Caches/deep-read-summarize`, Linux `$XDG_CACHE_HOME/deep-read-summarize`, Windows `%LOCALAPPDATA%\deep-read-summarize`.
-- A **full transcription has been run successfully on real macOS hardware** (since 0.3.12): `uv` bootstraps Python 3.12, installs faster-whisper, downloads the model and writes the transcript — exit code 0. CI's `macos-latest` job separately covers platform path resolution and the whole test suite. If you hit an error on a Mac, please open an issue.
-
----
-## Installation (DSH plugin)
-
-deep-read-summarize is a DSH plugin installable via npm or locally:
+Install and start DSH Desktop once to initialize its desktop profile. **Quit the application completely**, then use the DSH command bundled with Desktop to install the plugin:
 
 ```bash
-# npm install (includes Acorn for parser construction)
-npm install deep-read-summarize
-
-# or local install (dsh profile directory)
-pnpm add ./deep-read-summarize-0.3.10.tgz
-# then append to the dsh config's dsh.profile.bundles:
-#   - deep-read-summarize
-# restart dsh web (POST /dsh-market/restart)
+dsh plugin --profile desktop add deep-read-summarize
 ```
 
-After installation it registers:
-- the `deep_read_summarize` tool when the host provides tools and workflowEngine services; models send only input/type/options
-- the `deep-read-summarize` workflow definition (meta + script), with the existing workflow-tool route retained for older hosts
-- the `deep-read-summarize` skill (`skills/deep-read-summarize/SKILL.md`)
-- four parsers (`parsers/`) and JSON Schemas (`schemas/`)
+Reopen DSH Desktop when installation finishes. The bundled command may not be on your system PATH; use `resources/runtime/cli/bin/dsh` inside the installation directory (`dsh.cmd` on Windows). Interfaces and commands can change between host versions; see the [official DSH Desktop instructions](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/desktop/README.md). Do not run `npm install` or `npm update` directly inside a DSH profile directory.
 
----
-## Quick start (~5 minutes)
+Deep reading also requires a working model and suitable permissions in DSH. Some sources need additional tools: PDF extraction may need `pdftotext`, YouTube captions may need `yt-dlp`, and local transcription of a video without subtitles may require `uv` and a transcription model.
 
-### 1. Install
+### 2. Request a reading note
 
-```bash
-# Option A: npm install directly (no clone needed)
-npm install deep-read-summarize
+In a DSH conversation, for example:
 
-# Option B: develop from source
-git clone https://github.com/PensiveFei/deep-read-summarize.git
-cd deep-read-summarize
-npm ci             # install locked dependencies
+```text
+Please read this paper in depth and save a Markdown reading note:
+https://arxiv.org/abs/2307.09042
 ```
 
-### 2. Verify installation (offline, no API key needed)
+You can also provide a local file, web page, or video link. If needed, specify an output location, sections to retain, or whether you want timestamps.
 
-```bash
-node -e "console.log(require('deep-read-summarize').name)"
-```
+Hosts with plugin-tool support register `deep_read_summarize`; older hosts use the bundled skill and workflow entry point. The tool returns the note and a suggested path; **the main agent must write the file**. Check that the file was saved and whether the result reports gaps or quality issues.
 
-Seeing `deep-read-summarize` confirms the package loads. Source checkouts can additionally run `npm test` and `npm run test:node`; tests are not included in the npm package.
+<details>
+<summary>Direct tool-call example</summary>
 
-### 3. Feed a demo file with one command
-
-```bash
-node -e "const wf = require('./workflow.js'); console.log('meta:', wf.meta.name); console.log('parsers:', wf.parsers.list().map(p => p.name).join(', '));"
-```
-
-Output looks like:
-
-```
-meta: deep-read-summarize
-parsers: book, paper, video, web
-```
-
-### 4. Real run (requires DSH)
-
-Prefer passing the JSON below directly to `deep_read_summarize`. On older hosts, use the skill's meta + script with the existing `workflow` tool:
-
-```jsonc
-{ "input": "https://arxiv.org/abs/2307.09042", "type": "paper", "options": { "maxChunks": 4, "fastMode": true } }
-```
-
-The workflow returns a structured result: `{ ok, kind, title, filePath, qualityPassed, note }`, where `note` is the final Markdown note.
-
-> ⚠️ **The caller persists the note.** DSH's workflow contract gives the script no filesystem access — it only coordinates subagents — so the script returns the note body plus a suggested `filePath` and never writes the file itself. The bundled SKILL.md tells the model to write `note` to `filePath` with the `write` tool after the run; do the same when you invoke the workflow by hand, or the note exists only in the return value.
-
----
-## Usage
-
-The `deep_read_summarize` tool takes these parameters directly. On older hosts, use them as workflow args with the skill's meta + script:
-
-```jsonc
+```json
 {
-  "input": "https://arxiv.org/abs/2307.09042",  // link or file path
-  "type": "auto",   // auto | book | paper | video | web
+  "input": "https://arxiv.org/abs/2307.09042",
+  "type": "paper",
   "options": {
-    "minWords": 2500,
-    "fastMode": false,        // true skips sections 5-7, faster
-    "maxChunks": 4,           // chunk limit, 1-12
-    "readConcurrency": 3,     // concurrent chunk reads and reviews, 1-12
-    "parallelQuality": false, // opt in to parallel source review; default retains original review
-    "readCache": false,        // plugin tool only: opt in to cross-run read caching
-    "readCacheIdentity": "",   // required when enabled: provider, pinned model version and settings
-    "transcribe": true,       // video: auto local transcription (faster-whisper) when no subtitles; false skips it — see Video
-    "whisperModel": "small",  // video ASR tier: small | base | medium
-    "language": "zh",         // video ASR language: use "en" for English-only videos
-    "device": "cpu",          // ASR device: cpu (default) | auto | cuda; auto/cuda needs a CUDA runtime and falls back to cpu
-    "cpuThreads": 0,          // 0 keeps library defaults; 1-64 allows hardware-specific tuning
-    "transcriptCache": true,  // reuse a verified local transcript for matching audio and settings
-    "maxRetries": 0,          // quality-check retries (default 0 = no retry; retrying is noticeably slower)
-    "frontmatter": "obsidian", // key set: obsidian (default, for Dataview) | generic (drops the keys Hugo reserves) | minimal
-    "requireCitations": true, // whether key conclusions must carry citations
-    "includeTimestamps": false,
-    "outputDir": "./output",    // note output directory (can point at your Obsidian vault or a static-site content folder)
-    "tempDir": "./.tmp"        // temp file directory
+    "maxChunks": 4,
+    "outputDir": "./output"
   }
 }
 ```
 
-Examples:
+`type` can be `auto`, `book`, `paper`, `video`, or `web`. Specifying it can skip classification for ambiguous inputs. The tool-call interface depends on the DSH host; asking in conversation is also supported.
 
-| Type | input |
-|------|-------|
-| Paper | `https://arxiv.org/abs/2307.09042` |
-| Book | local path, e.g. `~/books/xxx.pdf` |
-| Video | `https://youtube.com/watch?v=xxx` |
-| Web page | `https://example.com/article` |
+</details>
 
-Notes are written to `options.outputDir` (default `./output`, can point at your Obsidian vault or a static-site content folder), with the filename taken from the content title.
+## Quality and limitations
 
-### Frontmatter profiles (`options.frontmatter`)
+The workflow normalizes chunk ranges and checks coverage of known source line numbers. After drafting, code checks format and length, and an independent review agent reads the obtained text to check chunk coverage and key quotations. Results are available through `qualityPassed`, `qualityChecks`, and `qualityEvidence`.
 
-The default is `obsidian`, with the same keys as earlier versions and safely quoted scalar/list values. Profiles exist because `type`, `aliases` and `url` are **reserved keys in Hugo** with different meanings -- dropping an Obsidian note into Hugo changes how the page renders, rather than adding a few harmless fields.
+These checks have limits:
 
-| Key | `obsidian` (default) | `generic` | `minimal` |
-|---|---|---|---|
-| `title` | yes | yes | yes |
-| `aliases` | yes | -- | -- |
-| `author` / `year` | yes | yes | -- |
-| `type` | yes | -- | -- |
-| `docType` | -- | yes | -- |
-| `url` | yes | -- | -- |
-| `sourceUrl` | -- | yes | yes |
-| `tags` | yes | yes | yes |
-| `created` | yes | -- | -- |
-| `date` | -- | yes | yes |
-| `status` | yes | yes | -- |
+- **`qualityPassed` does not prove factual accuracy.** Coverage and source authenticity still depend on the reviewing agent reading and evaluating the source. Check important claims, numbers, and quotations yourself.
+- **Retrieving the full text does not guarantee understanding it.** Complex tables, formulas, images, or extraction errors can affect the result; incomplete sources or failed chunks are reported as gaps.
+- **Captions and transcripts can differ from audio.** Automatic captions and speech recognition can omit words or mishear numbers and negations; checking the note against a transcript does not prove the transcript is accurate.
+- **Video timestamps cannot be inferred reliably.** Locations depend on whether the obtained subtitles or transcript contain time information.
 
-Why `generic` renames things:
+## Common options
 
-- `type` in Hugo selects the **layout** (`type: video` makes it look for `layouts/video/`)
-- `aliases` in Hugo is **a list of old URLs that redirect to this page**
-- `url` in Hugo **overrides the page's own path** -- the source link would become the article's permalink
-- `date` is the time key both Hugo and Jekyll understand; `created` is just a custom field
-
-An unknown value is fatal rather than silently ignored, matching how `type` is handled.
-
-### Video: full transcript (subtitles first, auto-transcription when none)
-
-Video text extraction is a **unified pipeline** (the old "three tiers" are gone): the goal is to get the **full transcript**, then deep-read it.
-
-> **⚠️ To preserve deep-reading quality, processing may take noticeably longer (a deliberate trade-off, not a hang)**: a **subtitle-less** video is transcribed first (roughly 0.5–2× the video length on CPU) before deep reading, so such videos are **much slower than subtitled videos**; in exchange you get a **full transcript + real deep reading**. **Subtitled** videos remain seconds-fast. Please do not mistake the slower transcription for a hang.
-
-1. **Platform subtitles available** (Bilibili's official API AI subtitles / YouTube CC) → **use them directly** (= full text, fastest, zero dependencies).
-2. **No public subtitles** → use the bundled transcription `scripts/transcribe.js` (faster-whisper small / int8 / VAD / Chinese) to get the full text.
-3. **Neither works** → **degrade gracefully**: prompt the user to supply a transcript manually, or fall back to `desc` as background; **never block**.
-
-`options.transcribe`: **default `true`** (auto-transcribe when no subtitles); set `false` to skip transcription (use subtitles/desc or degrade).
-
-**Transcription toolchain**: `uv` provisions **Python 3.12** and installs **`faster-whisper==1.2.1`** from the Tsinghua mirror; models use `HF_ENDPOINT=https://hf-mirror.com` and the local cache. Healthy cached environments run directly without requiring uv or a separate Python import probe. Actual interpreter and dependency versions are recorded in the cache's `runtime.json`; Python patch releases, uv, and all transitive dependencies are not fully pinned. PyAV decodes audio without a separate ffmpeg. All three platforms use `node scripts/transcribe.js --audio <file> --out <txt>`. CPU is the default; `options.device: "auto"` can try a supplied CUDA runtime and falls back to CPU. Cache roots are `%LOCALAPPDATA%\deep-read-summarize` on Windows, `~/Library/Caches/deep-read-summarize` on macOS, and `$XDG_CACHE_HOME/deep-read-summarize` on Linux (falling back to `~/.cache`). Python provisioning tries a mirror and then direct GitHub; `DRS_UV_PYTHON_MIRROR` overrides it, with an empty value selecting direct downloads.
-
-> ⚠️ **The first transcription downloads the model (small ≈ 484 MB, via hf-mirror, not GitHub) and may take a few minutes**. Later runs reuse model files; new audio still requires full inference. Only a verified transcript cache hit skips inference. **Only subtitle-less videos trigger transcription** (subtitled videos use their subtitles directly).
-
-**Transcript cache and threads**: `options.transcriptCache` defaults to true. Keys include the audio SHA-256, managed local model snapshots, installed dependencies, and decoding settings. Canonical segments retain real start/end times, so changing timestamp presentation does not repeat inference. Changed content/configuration/models/dependencies, custom local model directories, unknown environments, corrupt entries and expired entries bypass reuse. Cache lookup uses the existing local snapshot and does not check for upstream model updates online. Entries live under `transcripts-v1` in the cache root: 8 MiB per entry, 128 MiB total, 30-day validity, pruned on writes. Audio is not stored, and reading/source review still runs.
-
-`options.cpuThreads` accepts integers 0–64. The default `0` preserves the library's CPU thread policy. Compare 4/6/8 on the same audio; more threads are not necessarily faster. CLI controls:
-
-```bash
-node scripts/transcribe.js --audio sample.m4a --out transcript.txt --cpu-threads 8
-node scripts/transcribe.js --audio sample.m4a --out transcript.txt --refresh-cache
-node scripts/transcribe.js --audio sample.m4a --out transcript.txt --no-cache
-node scripts/transcribe.js --clear-cache
-```
-
-`--clear-cache` removes only transcripts, retaining models and Python. `--refresh-cache` forces inference and updates the cache; `--no-cache` disables reads and writes. Successful calls print one `metrics` JSON line with `cacheHit`, actual device, audio duration, and milliseconds for hashing, environment preparation, dependency installation, Python, publication and total time. Misses also include import, model loading, preparation (including decoding/VAD), and complete lazy-segment iteration. Hits do not reuse previous inference timings.
-
-The note's `qualityPassed` checks the note against acquired text; it does not establish ASR accuracy. ASR changes still need audio/reference comparisons for errors, omissions, numbers, negation and timestamps.
-
-**Quality/speed**: `small` + `int8` quantization + `VAD` silence filtering gives usable Chinese quality and is CPU-friendly. **Subtitled videos are not transcribed (fast)**; subtitle-less videos are transcribed at roughly 0.5–2× the video length on CPU.
-
-**Failure handling**: install/download failures **report an error and degrade** (prompt for a manual transcript), never silently and never blocking for long. Use `options.transcribe: false` to skip transcription.
-
-**How to know what source was used**: source info is **not written into the note** (to keep it clean); it surfaces in: ① the run log's `[source] <value> -> <label>` line; ② the `textSource` field in the returned result (`subtitle / transcription / desc / manual`).
-
----
-
-## Variance and influencing factors (why length and content may differ)
-
-**Output length and content vary noticeably with the model and the input; this is normal.**
-
-### Model
-- **ASR model tier**: `small` (default, usable for Chinese) → `base` (faster, slightly lower quality) → `medium` (better, slower). Adjust with `options.whisperModel`; download size and speed grow with the model.
-- **Language/accent**: Chinese/English/mixed language, dialect, accent, stress → **different transcription accuracy and time**; for pure English video you can set `language: "en"`.
-- **Deep-reading LLM**: uses the host DSH model; different context/reasoning models → **different quality, length, and speed**.
-- **Non-determinism**: both the LLM and ASR are stochastic, so **re-running the same input may produce slightly different results** (content/length).
-
-### Input
-- **Video**:
-  - Whether **public subtitles** exist is the biggest differentiator — public subtitles = seconds-fast; login-only AI subtitles or no subtitles = triggers transcription, **noticeably slower**.
-  - **Length**: longer video = longer transcription (≈ 0.5–2× the video length on CPU).
-  - **Audio quality/noise/low volume/pure BGM/no voice**: transcription is error-prone or **empty**; supply a transcript manually in that case.
-- **Paper/book/web page**:
-  - Format: PDF/EPUB/MOBI/HTML/arXiv; **scanned OCR, broken PDFs, dense formulas/figures** → different extraction quality and time.
-  - **Term density/length** → different chunk count and deep-reading depth.
-- **Chunking structure**: different types chunk differently (chapter/topic/paragraph), affecting **output structure** and coverage.
-
-### Hardware
-- **GPU vs CPU**: gains depend on hardware, runtime libraries, model and audio. A visible GPU does not prove CUDA inference works; compare actual time and transcript accuracy.
-
-### Other
-- **First run vs reuse**: the first run downloads the model (≈ 484 MB); later runs reuse the cache.
-- **Token/cost**: chunk count, length, and citations drive token usage; `fastMode`/`maxChunks` save tokens.
-- **Citation/fabrication**: transcription or OCR errors may be quoted as "original text"; **re-check key citations**.
-- **Boundaries**: pure BGM, distorted audio → empty/poor transcription; no subtitles and transcription unavailable → degrade to a prompt for a manual transcript.
-
----
-
-## How failures are handled
-
-Two classes:
-
-- **Configuration errors** (missing input, invalid type, malformed options): throw immediately and abort — no half-baked output.
-- **Content problems** (fetch failed, a chunk's deep-read failed): return `{ ok: false, stage, fatal: false }` and let the caller decide. A failed chunk is skipped and marked as a gap in the draft; the whole run is not aborted.
-
----
-
-## Faster runs with the same quality gates
-
-- Prefer `deep_read_summarize` on supported hosts: the model submits parameters instead of reproducing the entire workflow script. Older hosts retain the existing route.
-- All known source lines remain covered. By default up to three reading tasks run concurrently, and each free slot immediately starts another task. Character-balanced chunks are used when available; otherwise the workflow balances by line count.
-- Independent source review remains enabled. With `parallelQuality: true`, source chunks and all quotations are checked in parallel, with a separate global terminology and language review; the original review is the default. Missing line counts, failed reads, and description-only video sources cannot be fixed by rewriting the draft, so those states no longer consume full repair loops.
-- Video `textSource: "desc"` is explicitly degraded and cannot pass as a complete deep read. Bilibili `p` selects the matching CID, part title, and duration.
-- Returned `timings` reports stage durations in milliseconds; `readTimings` reports each chunk’s line range, duration and success. Compare the same sources, model, output size, and quality gates; scheduling simulations are not real LLM speedup measurements.
-- `readConcurrency` controls concurrent chunk reads without changing the chunk plan or quality review requirements; it also limits concurrent review tasks when `parallelQuality` is enabled. It defaults to 3. When at least four chunks exist and the host supports it, try 4 and compare total time, throttling and failures; higher concurrency is not always faster.
-
-**Cross-run read caching** is disabled by default and supported only by the `deep_read_summarize` plugin tool, not direct workflow calls. Set `readCache: true` and provide `readCacheIdentity` containing the provider, pinned model version and all output-affecting settings. The host cannot verify that identity; change it when the model or settings change. The cache matches source content, chunk prompt and identity, writes only after quality passes, and still performs independent source review on hits. `readTimings.cacheHit` reports hits. Entries are plaintext under `tempDir/.read-cache-v1` and may contain source excerpts; they expire after 30 days, are capped at 64 MiB total and 1 MiB per entry, and can be deleted by removing that directory.
-
-Defaults preserve small/int8, existing decoding settings, output length and independent source review. Transcript caching speeds up repeated audio; new audio can be profiled and tuned with CPU thread settings. Persistent ASR workers, batch inference and hierarchical review require separate benchmarks and are not enabled automatically.
-
-## Cost
-
-Token use depends on document length, chunk count, and output size. Source review reads the document again, and each repair round adds a repair and a review call. `fastMode` reduces output sections; reducing `maxChunks` limits agent count while preserving the complete source.
-
-Programmatic `lib/cache` callers: URL trailing slashes, explicit empty queries, and fragments are preserved because they may select different content. New fingerprints are isolated from old records, so an upgrade can cause one reprocessing pass. Callers must still verify source freshness and configuration before reusing results.
-
----
-
-## Security & copyright
-
-- Fetching videos/web pages makes external requests, executed by sub-agents under DSH's sandbox and approval policy; don't let a model run arbitrary scripts unattended.
-- Sub-agents need appropriate permissions to write files; if permissions are insufficient, the workflow returns the content and the main agent handles persistence.
-- **Local transcription**: video transcription (faster-whisper) runs **locally**; audio/subtitles **do not leave your machine**; network requests to the corresponding platforms are made only when fetching video metadata/subtitles/audio.
-- The repository contains the pipeline and a few historical reading-note examples. The cited papers, video, and short quotations remain subject to their respective rights and permissions. Test fixtures are self-written public-domain fables. Check the terms of your sources and intended use when processing copyrighted material.
-
----
-
-## Development
-
-```bash
-npm install
-npm run lint       # node --check on all JS
-npm test           # fixture tests (35, all offline)
-npm run validate   # pre-release validation (including security checks)
-```
-
-`npm publish` automatically runs `prepublishOnly` (tests + lint + security checks) first; any failure blocks the publish.
-
-See CHANGELOG.md for changes and CONTRIBUTING.md for contribution guidelines.
-
----
-
-## Compatibility
-
-**Verified host: DSH 0.2.0-rc.2** (Node 24). The dependency surface is exactly two things:
-
-| Surface | Current contract | How this repo uses it |
+| Option | Default | Purpose |
 | --- | --- | --- |
-| workflow script hooks | `agent()` / `pipeline()` / `parallel()` / `phase()` / `log()` / `args` | only `agent/parallel/phase/log/args`; `agent()` options limited to `label/phase/schema` (the engine accepts only `label/phase/schema/provider/model` and treats anything else as fatal) |
-| JSON Schema subset | `type / properties / required / additionalProperties / items / enum / const / oneOf` plus annotation keys | both `agent()` schemas verified against the host's real `assertObjectJsonSchema` |
+| `minWords` | `2500` | Minimum length; the check counts Chinese characters and words in other text |
+| `fastMode` | `false` | Omit the critical analysis, personal applications, and further-reading sections |
+| `maxChunks` | `4` | Chunk-count limit, capped at 12; this is not the concurrency setting |
+| `readConcurrency` | `3` | Maximum concurrent chunk reads; higher concurrency is not always faster |
+| `maxRetries` | `0` | Repair attempts after a failed quality check; by default, a successfully drafted note receives one review and no repair |
+| `outputDir` | `./output` | Suggested note directory; the main agent performs the write |
+| `requireCitations` | `true` | Require verifiable source information for key quotations |
+| `includeTimestamps` | `false` | Request timestamps for video notes |
+| `transcribe` | `true` | Attempt local transcription when a video has no usable subtitles |
+| `whisperModel` / `language` | `small` / `zh` | Choose a transcription model and language; set `en` for English when appropriate |
+| `device` / `cpuThreads` | `cpu` / `0` | Select the transcription device and CPU thread policy |
+| `transcriptCache` | `true` | Reuse validated transcripts when the audio and configuration match |
+| `parallelQuality` | `false` | Opt in to parallel source review; the original review path remains the default |
+| `readCache` | `false` | Optional cross-run chunk cache; supported by the plugin tool only |
 
-Two contract details that bite:
+To enable `readCache`, also set `readCacheIdentity` to include the provider, pinned model version, and output-affecting settings; change it whenever those change. The caller supplies this identity, and the host cannot verify it automatically. Cache entries are local plaintext and may contain source excerpts; cache hits still receive independent source review.
 
-- **The script sandbox has no filesystem, network, timers or `require`** — it coordinates subagents; the caller persists the note (see ⚠️ above).
-- **Breaking the schema subset terminates the run** rather than degrading: the engine raises `UNSUPPORTED_SCHEMA` and the whole workflow fails. `npm test` carries a regression for this, including a reverse assertion so the checker cannot pass vacuously.
+Other options include `frontmatter` (`obsidian`, `generic`, or `minimal`) and `tempDir`. See the [advanced reference](https://github.com/PensiveFei/deep-read-summarize/blob/main/docs/README-reference.en.md) for detailed options, supported formats, and transcription and cache behavior.
 
-After upgrading DSH, run `npm test` and `npm run test:node`; if something breaks, cross-reference CHANGELOG.md.
+## Time, cost, and privacy
 
----
+- **Time** depends on content length, retrieval, chunk count, model, and host concurrency. A video without subtitles needs extra transcription; the first run may also download a transcription model.
+- **Cost** depends on your model and input/output usage; the project cannot promise fixed time or cost.
+- **Privacy:** speech transcription runs locally, but deep reading uses your configured DSH model. With a cloud model, source text, subtitles, notes, or related context may be sent to its provider; check its data-handling terms first.
+- **Local files:** temporary source text, transcripts, and optional caches may remain on your device. Check directory permissions and cleanup before processing sensitive material.
 
-## License
+## Troubleshooting
 
-MIT — see [LICENSE](LICENSE).
+- **Plugin unavailable:** check the DSH profile, restart Desktop after installation, and check host-version compatibility.
+- **Fetch failure or missing sections:** check source accessibility and required tools; inspect the returned stage, source status, and failed chunks.
+- **Only a video description is available:** a complete subtitle or transcript has not been confirmed. Check subtitle and transcription availability, or provide a transcript.
+- **Quality check failed:** inspect `qualityIssues` and `qualityEvidence` and review the source as needed. Do not treat an unverified note as a complete account.
+
+For further help, [open a GitHub issue](https://github.com/PensiveFei/deep-read-summarize/issues) with your operating system, DSH and plugin versions, input type, and error details. Remove secrets, private links, and personal data first.
+
+## Development and contributing
+
+Work in a **separate project directory**; do not run npm inside a DSH profile:
+
+```bash
+git clone https://github.com/PensiveFei/deep-read-summarize.git
+cd deep-read-summarize
+npm ci
+npm test
+npm run test:node
+npm run lint
+npm run validate
+```
+
+The project uses parsers for different input types and supports custom parsers. See the [repository](https://github.com/PensiveFei/deep-read-summarize), [CHANGELOG](https://github.com/PensiveFei/deep-read-summarize/blob/main/CHANGELOG.md), and [CONTRIBUTING](https://github.com/PensiveFei/deep-read-summarize/blob/main/CONTRIBUTING.md).
+
+The relevant host contracts were previously verified with DSH `0.2.0-rc.2`. DSH interfaces can change; verify other versions against the actual host and compatibility information.
+
+## License and disclaimer
+
+Project code is available under the [MIT License](https://github.com/PensiveFei/deep-read-summarize/blob/main/LICENSE). Papers, video, and short quotations cited in examples remain subject to their respective rights and permissions.
+
+deep-read-summarize is an independent third-party project. It is not affiliated with, endorsed by, or sponsored by DeepSeek or DeepSeek Harness.
