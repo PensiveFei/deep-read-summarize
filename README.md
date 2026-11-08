@@ -5,6 +5,7 @@
 [![MIT license](https://img.shields.io/github/license/PensiveFei/deep-read-summarize)](https://github.com/PensiveFei/deep-read-summarize/blob/main/LICENSE)
 [![release](https://img.shields.io/github/v/release/PensiveFei/deep-read-summarize)](https://github.com/PensiveFei/deep-read-summarize/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/PensiveFei/deep-read-summarize/ci.yml)](https://github.com/PensiveFei/deep-read-summarize/actions/workflows/ci.yml)
+[![npm total downloads](https://badgen.net/npm/dt/deep-read-summarize)](https://www.npmjs.com/package/deep-read-summarize)
 
 把论文、书籍、视频或网页整理成一份**可以继续阅读、编辑和回查的 Markdown 笔记**。
 
