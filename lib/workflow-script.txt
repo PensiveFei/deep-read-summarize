@@ -604,5 +604,5 @@ return timedResult({
   textSource: textSource,
   sourceComplete: sourceComplete,
   note: verified,
-  __cacheReads: cacheResume ? reads : undefined
+  ...(cacheResume ? { __cacheReads: reads } : {})
 });

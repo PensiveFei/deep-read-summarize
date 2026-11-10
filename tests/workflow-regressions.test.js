@@ -398,3 +398,43 @@ test('stale or invalid character-balanced candidates fall back without gaps', as
     ]);
   }
 });
+
+// Workflow results cross a JSON serialization boundary in the host engine: one
+// undefined field makes the engine reject the entire result, losing a finished
+// note. The plain (no cache) success branch used to carry __cacheReads: undefined.
+function undefinedPaths(value, at = '$', bad = []) {
+  if (value === undefined) { bad.push(at); return bad; }
+  if (Array.isArray(value)) { value.forEach((entry, index) => undefinedPaths(entry, at + '[' + index + ']', bad)); return bad; }
+  if (value && typeof value === 'object') for (const key of Object.keys(value)) undefinedPaths(value[key], at + '.' + key, bad);
+  return bad;
+}
+
+test('plain success result is JSON-serializable without a __cacheReads key', async () => {
+  const { result } = await runWorkflow({ input: 'fixture', type: 'paper', options: { maxChunks: 2 } });
+  assert.equal(result.ok, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, '__cacheReads'), false,
+    'the plain entry must not carry the internal cache-resume field');
+  assert.deepEqual(undefinedPaths(result), [], 'every returned value must be JSON data');
+});
+
+test('cache-resume success keeps __cacheReads as a serializable array', async () => {
+  const baseArgs = { input: 'fixture', type: 'paper', options: { maxChunks: 2 } };
+  const twoChunks = { totalLines: 10, chunkPlan: [
+    { id: 1, topic: 'part one', startLine: 1, endLine: 5 },
+    { id: 2, topic: 'part two', startLine: 6, endLine: 10 }
+  ] };
+  const prepared = await runWorkflow(Object.assign({}, baseArgs, { __cachePrepare: true }), twoChunks);
+  assert.equal(prepared.result.__cachePrepared, true);
+  assert.deepEqual(undefinedPaths(prepared.result), [], 'the cache preparation must be JSON data too');
+  const resume = {
+    tempDir: prepared.result.tempDir, selectedType: prepared.result.selectedType,
+    fetched: prepared.result.fetched, prompts: prepared.result.chunkPrompts,
+    hits: [null, 'cached findings for chunk two']
+  };
+  const { result, calls } = await runWorkflow(Object.assign({}, baseArgs, { __cacheResume: resume }));
+  assert.equal(result.ok, true);
+  assert.equal(Array.isArray(result.__cacheReads), true, 'the resume entry keeps the cache-resume reads');
+  assert.equal(result.__cacheReads[1], 'cached findings for chunk two');
+  assert.deepEqual(undefinedPaths(result), [], 'the resume result must be JSON data');
+  assert.equal(calls.filter(call => call.label === '精读块').length, 1, 'a cache hit must not trigger a re-read');
+});
