@@ -5,9 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-11-10
+
+修复普通执行路径的结果序列化错误，避免已生成的精读笔记在返回宿主时被丢弃。
+
 ### Fixed
 
 - 无缓存复用的成功分支不再返回 `__cacheReads: undefined`：该字段无法通过宿主 workflow 引擎的 JSON 序列化检查（「is not JSON data」），会连已成稿的 `note` 一起被整体丢弃。改为按需展开（仅缓存复用时携带），普通路径的结果不再含内部缓存字段；缓存复用路径返回数组不变。回归测试见 `tests/workflow-regressions.test.js`。
+
+### Verification
+
+- PR 的七项 CI 检查通过，覆盖 Node.js 18、20、22、24 和 Windows、macOS、Linux。使用 DSH 0.2.2-rc.1 的 workflow 执行器与模拟代理复现原错误，并验证修复后普通路径和缓存路径的返回结果；未进行真实模型端到端调用。
+
+### Compatibility
+
+- 升级无需更改配置；缓存复用路径保持原有行为。
+
+### 贡献者与致谢
+
+- 感谢 @Zyx-A 报告、定位并修复结果序列化问题，以及补充回归测试（[PR #8](https://github.com/PensiveFei/deep-read-summarize/pull/8)）。
 
 ## [0.6.0] — 2026-11-05
 
