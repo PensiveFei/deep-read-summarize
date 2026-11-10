@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 无缓存复用的成功分支不再返回 `__cacheReads: undefined`：该字段无法通过宿主 workflow 引擎的 JSON 序列化检查（「is not JSON data」），会连已成稿的 `note` 一起被整体丢弃。改为按需展开（仅缓存复用时携带），普通路径的结果不再含内部缓存字段；缓存复用路径返回数组不变。回归测试见 `tests/workflow-regressions.test.js`。
+
 ## [0.6.0] — 2026-11-05
 
 新增可配置并发、字符均衡分块与可选的并行原文核验和跨次精读缓存，保留原有默认核验路径。
