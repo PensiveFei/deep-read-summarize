@@ -376,7 +376,7 @@ if (fmProfile === "obsidian") {
 fm.push("---");
 
 const draftPrompt = [
-  "将以下多块精读结果整合为完整的结构化精读笔记，只输出标准 Markdown（含 YAML frontmatter）。",
+  "将以下多块精读结果整合为完整的结构化精读笔记，只输出标准 Markdown（含 YAML frontmatter），不要前言、结尾说明或包裹整篇笔记的代码围栏；笔记内部需要的代码块可保留。",
   sourceComplete ? "来源完整性仍需由独立原文核验确认。" : "本次来源不完整。必须在正文开头保留以下可见来源限制，不得称为完整视频精读或补写未取得的视频内容：\n" + sourceNotice,
   "模板："
 ].concat(fm, [
@@ -410,7 +410,10 @@ if (typeof draft !== "string" || !draft.trim()) return timedResult({ ok: false, 
 // ---------- 5. 程序检查 + 独立原文核验 ----------
 phase("质量校验");
 const qualityStartedAt = Date.now();
-let verified = draft;
+const extractedDraft = __quality.extractNote(draft);
+let verified = extractedDraft.note;
+const draftContext = [];
+if (extractedDraft.context) draftContext.push(Object.assign({ stage: "draft" }, extractedDraft.context));
 let passed = false;
 let issues = [];
 let qualityChecks = {};
@@ -560,7 +563,7 @@ for (let round = 0; round <= maxRetries; round++) {
   if (!repairableSource) break;
   if (round < maxRetries) {
     const fixPrompt = [
-      "修正以下笔记以解决校验问题，输出完整修正版：",
+      "修正以下笔记以解决校验问题，只输出完整修正版 Markdown，不要前言、结尾说明或包裹整篇笔记的代码围栏：",
       issues.map(function (s) { return "- " + s; }).join("\n"),
       "原文路径和覆盖证据（必要时用 read 核对，不能臆造缺口）：", JSON.stringify(sourceContext),
       "必须保留的 frontmatter 模板：", fm.join("\n"),
@@ -575,11 +578,13 @@ for (let round = 0; round <= maxRetries; round++) {
     if (typeof repaired !== "string" || !repaired.trim()) {
       issues.push("修正结果为空或不是字符串，已保留上一份有效笔记"); break;
     }
-    const repairedStructure = __quality.checkNoteStructure(repaired, structureOptions);
+    const extractedRepair = __quality.extractNote(repaired);
+    const repairedStructure = __quality.checkNoteStructure(extractedRepair.note, structureOptions);
     if (!repairedStructure.formatComplete || (localCheck.lengthMet && !repairedStructure.lengthMet)) {
       issues.push("修正结果格式不完整或篇幅退化，已保留上一份有效笔记"); break;
     }
-    verified = repaired;
+    verified = extractedRepair.note;
+    if (extractedRepair.context) draftContext.push(Object.assign({ stage: "repair" }, extractedRepair.context));
   }
 }
 
@@ -603,6 +608,7 @@ return timedResult({
   coverageComplete: coverageComplete,
   textSource: textSource,
   sourceComplete: sourceComplete,
+  ...(draftContext.length ? { draftContext: draftContext } : {}),
   note: verified,
   ...(cacheResume ? { __cacheReads: reads } : {})
 });

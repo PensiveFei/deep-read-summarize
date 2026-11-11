@@ -80,7 +80,8 @@ function buildSelfContainedScript(parserRegistry = parsers.registry) {
   const runtimePaths = { transcribeScript: fs.realpathSync(path.join(__dirname, 'scripts', 'transcribe.js')), chunkBalanceScript: fs.realpathSync(path.join(__dirname, 'scripts', 'chunk-balance.js')) };
   return 'const __runtimePaths = ' + JSON.stringify(runtimePaths) + ';\n' +
     'const normalizeWorkflowOptions = ' + normalizeWorkflowOptions.toString() + ';\n' +
-    'const __quality = { checkNoteStructure: ' + quality.checkNoteStructure.toString() +
+    'const __quality = { extractNote: ' + quality.extractNote.toString() +
+    ', checkNoteStructure: ' + quality.checkNoteStructure.toString() +
     ', validateSourceCheck: ' + quality.validateSourceCheck.toString() + ' };\n' +
     RAW_SCRIPT.replace(marker, impl + "\nconst parsers = args._parsers || __parsers;");
 }

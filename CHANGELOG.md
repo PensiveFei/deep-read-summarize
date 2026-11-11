@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **成稿包装导致质量误报**：识别唯一、明确的完整 Markdown 笔记，先移除其外层围栏或前言，再对同一份正文执行格式、篇幅和独立原文核验并返回；普通代码块仍不计入正文。无法明确提取时保留原始回复并照常报告质量问题。
+- 可选的 `draftContext` 记录提取方式以及模型在笔记前后附带的说明；主代理向用户说明这些额外文字，它们没有通过笔记的原文核验。
+
+### 贡献者与致谢
+
+- 感谢 @qneko 报告和复现成稿外层 Markdown 围栏造成的质量误报（[Issue #9](https://github.com/PensiveFei/deep-read-summarize/issues/9)）。
+
 ## [0.6.1] — 2026-11-10
 
 修复普通执行路径的结果序列化错误，避免已生成的精读笔记在返回宿主时被丢弃。

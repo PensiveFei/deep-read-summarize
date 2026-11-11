@@ -65,6 +65,8 @@ You can also provide a local file, web page, or video link. If needed, specify a
 
 Hosts with plugin-tool support register `deep_read_summarize`; older hosts use the bundled skill and workflow entry point. The tool returns the note and a suggested path; **the main agent must write the file**. Check that the file was saved and whether the result reports gaps or quality issues.
 
+When an identifiable note is extracted from a wrapper, the optional `draftContext` field records the extraction and retains any surrounding text. That text is not part of the note reviewed against the source.
+
 <details>
 <summary>Direct tool-call example</summary>
 
