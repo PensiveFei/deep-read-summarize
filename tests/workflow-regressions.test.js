@@ -42,6 +42,7 @@ async function runWorkflow(args, config = {}) {
       return { kind: config.classifiedKind || 'web' };
     }
     if (label === '获取+分块') {
+      if (Object.prototype.hasOwnProperty.call(config, 'fetchReply')) return config.fetchReply;
       const fetched = {
         kind: config.fetchedKind || parserKind(prompt), saved: true,
         metadata: { title: 'Regression fixture' }, chunkPlan
@@ -217,6 +218,8 @@ test('B01 ambiguous input is classified before a specialized fetch', async () =>
   assert.ok(classifyIndex >= 0 && classifyIndex < fetchIndex);
   const classifier = run.calls[classifyIndex];
   assert.ok(classifier.options.schema, 'classification output must be schema constrained');
+  assert.match(classifier.prompt, /提交结构化结果/);
+  assert.doesNotMatch(classifier.prompt, /只输出 JSON/);
   assert.equal(parserKind(run.calls[fetchIndex].prompt), 'book');
   assert.equal(run.result.kind, 'book');
 });
@@ -437,4 +440,28 @@ test('cache-resume success keeps __cacheReads as a serializable array', async ()
   assert.equal(result.__cacheReads[1], 'cached findings for chunk two');
   assert.deepEqual(undefinedPaths(result), [], 'the resume result must be JSON data');
   assert.equal(calls.filter(call => call.label === '精读块').length, 1, 'a cache hit must not trigger a re-read');
+});
+
+// agent() resolves null when the child produced no structured result (it never
+// called structured_output, or the run itself failed). That is not the same
+// event as the child reporting { saved: false }: the source may be saved on
+// disk already. Sharing one message told the user to re-check the input when
+// the real failure was the child's result channel.
+test('a missing structured fetch result is not reported as a failed content fetch', async () => {
+  const args = { input: 'fixture', type: 'web', options: { maxChunks: 2 } };
+
+  const missing = (await runWorkflow(args, { fetchReply: null })).result;
+  assert.equal(missing.ok, false);
+  assert.equal(missing.stage, 'fetch');
+  assert.equal(missing.fatal, false);
+  assert.match(missing.message, /未收到可用的获取结果/);
+  assert.doesNotMatch(missing.message, /检查输入或手动提供文本/);
+
+  const stopped = (await runWorkflow(args, { fetchReply: { saved: false } })).result;
+  assert.equal(stopped.stage, 'fetch');
+  assert.equal(stopped.message, '获取失败（可降级：检查输入或手动提供文本）');
+  assert.doesNotMatch(stopped.message, /未收到可用的获取结果/);
+
+  const explained = (await runWorkflow(args, { fetchReply: { saved: false, message: 'Access denied by source' } })).result;
+  assert.equal(explained.message, 'Access denied by source', 'an explicit stop message must survive untouched');
 });

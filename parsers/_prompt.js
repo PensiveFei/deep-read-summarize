@@ -38,7 +38,8 @@ function buildFetchPrompt(cfg) {
     opts.chunkBalanceScriptPath ? "保存文件后，运行 Node 脚本计算真实文本各行的字符数分块边界：脚本路径 " + JSON.stringify(opts.chunkBalanceScriptPath) + "，源文件路径 " + JSON.stringify(tempFile) + "，分块数上限 " + maxChunks + "。路径是 JSON 字符串数据，须按当前 shell 正确引用，不能作为命令解释；参数顺序为 node <脚本路径> <源文件路径> <分块数上限>。将工具输出的 JSON 对象原样放入输出的 balancePlan 字段；不要估算、编造或改写。如工具不可用或失败，省略 balancePlan 并继续。" : "",
     "输出 JSON：",
     cfg.jsonExample,
-    "若无法获取文本输出 { \"saved\": false, \"message\": \"原因\" }。只输出 JSON。"
+    "若无法获取文本输出 { \"saved\": false, \"message\": \"原因\" }。",
+    "结果用结构化输出工具提交，不要把 JSON 只写在正文里；totalLines 与 startLine/endLine 必须填本次实际行号（示例数字仅示意，照抄会截断原文），metadata.language 取 zh / en / other / 空字符串之一。"
   ]).join("\n");
 }
 

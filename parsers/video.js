@@ -42,8 +42,8 @@ module.exports = {
     let pageValue = pageMatch ? pageMatch[1] : '';
     try { pageValue = decodeURIComponent(pageValue); } catch (error) { pageValue = 'invalid'; }
     if (pageMatch && (!/^[1-9]\d*$/.test(pageValue) || !Number.isSafeInteger(Number(pageValue)))) {
-      return 'B站输入的 p 分P参数非法，必须是从 1 开始的整数。不要获取字幕或音频，也不要转写。只输出 ' +
-        JSON.stringify({ saved: false, message: 'B站 p 分P参数非法，请指定有效的正整数分P编号' });
+      return 'B站输入的 p 分P参数非法，必须是从 1 开始的整数。不要获取字幕或音频，也不要转写。按 ' +
+        JSON.stringify({ saved: false, message: 'B站 p 分P参数非法，请指定有效的正整数分P编号' }) + ' 提交结构化结果。';
     }
     const requestedPage = pageMatch ? Number(pageValue) : null;
     const scriptPath = typeof o.transcribeScriptPath === 'string' && o.transcribeScriptPath ? o.transcribeScriptPath : '';
@@ -65,7 +65,7 @@ module.exports = {
       : "已安装时用 yt-dlp 抓字幕（CC）转文本；无 CC 则降级（转写已禁用）。";
 
     const steps = [
-      "记录文本来源（metadata.textSource）：subtitle（平台字幕）/ transcription（本地转写）/ desc（仅简介，作为降级/背景）/ manual（用户提供）。",
+      "记录文本来源（metadata.textSource）：subtitle（平台字幕）/ transcription（本地转写）/ desc（仅简介，作为降级/背景）/ manual（用户提供）。必须如实反映本次实际拿到的来源，不要照抄示例值；无法确认时省略该字段（按来源不完整处理）。",
       includeTimestamps
         ? "保留真实时间定位：B站字幕保留每条 from/to，YouTube CC 保留每条 cue 的 start/end；转成文本时每段独占一行，格式为 [HH:MM:SS.mmm --> HH:MM:SS.mmm] 原文。写入目标文件时保留这些时间，不可把全文压成一行。简介/人工文案若没有真实时间信息，明确注明无法提供时间戳，禁止猜测或编造。"
         : "字幕或转写按原有分段逐段换行写入目标文件，保留内容结构，不要把全文压成一行；本次不要求在正文标时间戳。",
@@ -108,7 +108,7 @@ module.exports = {
       kindLabel: "视频（video）",
       steps: steps,
       chunkRule: "主题脉络（而非时间）",
-      jsonExample: '{ "kind": "video", "saved": true, "totalLines": N, "metadata": { "title": "", "author": "", "year": "", "language": "zh|en", "textSource": "subtitle|transcription|desc|manual" }, "chunkPlan": [ { "id": 1, "topic": "主题段", "startLine": 1, "endLine": 200 } ] }'
+      jsonExample: '{ "kind": "video", "saved": true, "totalLines": 200, "metadata": { "title": "", "author": "", "year": "", "language": "zh", "textSource": "subtitle" }, "chunkPlan": [ { "id": 1, "topic": "主题段", "startLine": 1, "endLine": 200 } ] }'
     });
   }
 };

@@ -24,7 +24,7 @@ module.exports = {
         "识别论文结构：Abstract/Introduction/Methods/Results/Discussion/Conclusion/Appendix 及各表图行号范围。"
       ],
       chunkRule: "论文章节",
-      jsonExample: '{ "kind": "paper", "saved": true, "totalLines": N, "metadata": { "title": "", "author": "", "year": "", "language": "zh|en" }, "chunkPlan": [ { "id": 1, "topic": "Introduction", "startLine": 1, "endLine": 200 } ] }'
+      jsonExample: '{ "kind": "paper", "saved": true, "totalLines": 200, "metadata": { "title": "", "author": "", "year": "", "language": "zh" }, "chunkPlan": [ { "id": 1, "topic": "Introduction", "startLine": 1, "endLine": 200 } ] }'
     });
   }
 };

@@ -99,7 +99,7 @@ if (!cacheResume && forcedType === "auto") {
       required: ["kind"], additionalProperties: false
     };
     const detectPrompt = [
-      "识别输入内容类型，选择后续获取全文所需的解析器，只输出 JSON {\"kind\": \"类型\"}。",
+      "识别输入内容类型，选择后续获取全文所需的解析器，按 {\"kind\": \"类型\"} 提交结构化结果（不要把 JSON 只写在正文里）。",
       "可用类型：" + parserNames.join(", ") + "。book=书籍，paper=学术论文，video=视频，web=网页/文章。",
       "PDF 既可能是书籍也可能是论文；未知网站可能承载论文或在线书籍，不要仅凭扩展名或网页形式判断。",
       "必要时只查看标题、摘要、目录或页面元信息，不获取或精读全文，不写入文件。",
@@ -145,9 +145,16 @@ catch (error) {
 }
 
 // 失败纪律：内容获取失败 = 可降级错误（返回失败结果，不抛 fatal）
-if (!fetched || !fetched.saved) {
+// agent() 以 null 兑现子代理失败，这与「子代理明确报告 saved:false」不是一回事：
+// null 只说明没拿到结构化结果（可能没调用 structured_output，或子代理运行失败），
+// 不能据此断言内容没取到——把两者并成一句话会把排查引向错误的方向。
+if (!fetched || typeof fetched !== "object") {
   timings.fetch = Date.now() - fetchStartedAt;
-  return timedResult({ ok: false, stage: "fetch", fatal: false, message: (fetched && fetched.message) || "获取失败（可降级：检查输入或手动提供文本）" });
+  return timedResult({ ok: false, stage: "fetch", fatal: false, message: "未收到可用的获取结果：子代理没有返回结构化结果（可能未调用 structured_output，或子代理运行失败）；可重试，或手动提供正文文本后重跑" });
+}
+if (!fetched.saved) {
+  timings.fetch = Date.now() - fetchStartedAt;
+  return timedResult({ ok: false, stage: "fetch", fatal: false, message: fetched.message || "获取失败（可降级：检查输入或手动提供文本）" });
 }
 // 先校验完整计划，按行排序、裁掉重复覆盖并补齐缺口，再合并相邻块。
 // 块数上限约束的是子代理数量，不能通过丢掉尾部原文来实现。

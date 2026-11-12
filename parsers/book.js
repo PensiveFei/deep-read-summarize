@@ -25,7 +25,7 @@ module.exports = {
         "识别书籍结构：目录/序言/各章节标题及其行号范围。"
       ],
       chunkRule: "章节（或章节内小节）",
-      jsonExample: '{ "kind": "book", "saved": true, "totalLines": N, "metadata": { "title": "", "author": "", "year": "", "language": "zh|en" }, "chunkPlan": [ { "id": 1, "topic": "章节主题", "startLine": 1, "endLine": 200 } ] }'
+      jsonExample: '{ "kind": "book", "saved": true, "totalLines": 200, "metadata": { "title": "", "author": "", "year": "", "language": "zh" }, "chunkPlan": [ { "id": 1, "topic": "章节主题", "startLine": 1, "endLine": 200 } ] }'
     });
   }
 };

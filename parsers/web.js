@@ -23,7 +23,7 @@ module.exports = {
         "正文写入目标文件（不截断、不加评注），用 read 确认总行数。"
       ],
       chunkRule: "逻辑主题",
-      jsonExample: '{ "kind": "web", "saved": true, "totalLines": N, "metadata": { "title": "", "author": "", "year": "", "language": "zh|en" }, "chunkPlan": [ { "id": 1, "topic": "主题", "startLine": 1, "endLine": 200 } ] }'
+      jsonExample: '{ "kind": "web", "saved": true, "totalLines": 200, "metadata": { "title": "", "author": "", "year": "", "language": "zh" }, "chunkPlan": [ { "id": 1, "topic": "主题", "startLine": 1, "endLine": 200 } ] }'
     });
   }
 };

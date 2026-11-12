@@ -7,6 +7,8 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const plugin = require('../index');
+const parsers = require('../parsers');
+const schemas = require('../schemas');
 const video = require('../parsers/video');
 
 function fixture(t, source) {
@@ -212,4 +214,29 @@ test('Cordis optional-service injection upgrades late services, restores fallbac
   await cleanup();
   assert.equal(current.size, 0);
   assert.deepEqual(state.disposed, ['tool', 'tool']);
+});
+
+// The fetch prompt hands the child a literal JSON example. An example that is
+// not real JSON, or that uses a value outside fetchResultSchema, teaches the
+// child to submit arguments structured_output rejects; a rejected structured
+// call is exactly what surfaces downstream as "no usable fetch result".
+test('every built-in parser ships a fetch example that is real JSON inside the schema', () => {
+  const languageEnum = schemas.fetchResultSchema.properties.metadata.properties.language.enum;
+  const textSources = ['subtitle', 'transcription', 'desc', 'manual'];
+  for (const type of ['book', 'paper', 'video', 'web']) {
+    const prompt = parsers.resolve(type).buildPrompt('https://example.com/doc', { tempDir: '/tmp', maxChunks: 4 });
+    const line = prompt.split('\n').find(entry => entry.trim().startsWith('{ "kind"'));
+    assert.ok(line, type + ': fetch example missing');
+    let example;
+    assert.doesNotThrow(() => { example = JSON.parse(line); }, type + ': fetch example is not valid JSON');
+    assert.equal(example.kind, type);
+    assert.equal(typeof example.totalLines, 'number', type + ': totalLines must be a JSON number');
+    assert.ok(languageEnum.includes(example.metadata.language), type + ': language outside the schema enum');
+    if (example.metadata.textSource !== undefined) {
+      assert.ok(textSources.includes(example.metadata.textSource), type + ': textSource outside the documented values');
+    }
+    assert.ok(Array.isArray(example.chunkPlan) && example.chunkPlan.length > 0, type + ': chunkPlan missing');
+    assert.ok(!/只输出 JSON/.test(prompt), type + ': the prompt must not ask for JSON as plain text');
+    assert.ok(prompt.includes('结构化输出'), type + ': the prompt must name the structured-output channel');
+  }
 });
