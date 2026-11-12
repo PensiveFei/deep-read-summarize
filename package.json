@@ -1,6 +1,6 @@
 {
   "name": "deep-read-summarize",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "DSH 精读插件：书籍精读、论文精读、视频总结、网页摘要 → 结构化 Markdown 读书笔记（YAML frontmatter，可放进 Obsidian / Logseq）。English: deep reading & summarization for DSH — books, papers, videos and web pages into structured Markdown notes.",
   "type": "commonjs",
   "main": "index.js",

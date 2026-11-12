@@ -12,6 +12,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   - 为什么必须是完整短语而不是单个词：DSH 市场的搜索规则是「查询里的每个词都必须作为**子串**出现在**同一个字段**内」，而中文不会被空格切分——只写「论文」「视频」，中文用户搜「论文精读」「视频总结」时一个都命中不了。
   - 之所以动描述而不是只堆 keywords：市场只索引 `name` / `npm` 名 / `owner` / 描述 / 分类，**完全不读 keywords**；npm 搜索的默认排序又由热度主导，keywords 的边际作用接近零。
 
+## [0.6.3] — 2026-11-12
+
+修复获取阶段把「子代理没有返回结构化结果」误报成内容获取失败的问题，并让获取提示词的 JSON 示例合法、可被结构化输出接受。
+
+### Fixed
+
+- **两种获取失败被合并成一句话**：子代理失败时 `agent()` 兑现 `null`（没调用 `structured_output`，或运行失败），这与子代理明确返回 `{ "saved": false }` 不是同一件事——内容可能已经写入目标文件。此前两者共用「获取失败（可降级：检查输入或手动提供文本）」，把结果通道的问题说成来源问题，让用户回头重查一个本来没问题的链接。现在前者单独报告「未收到可用的获取结果」，后者保留子代理自报的 `message`，抛错路径不变。
+- **获取提示词的示例不合法**：四个内置解析器的 JSON 示例里 `"totalLines": N` 不是合法 JSON，`"language": "zh|en"` 超出 `fetchResultSchema` 的枚举，视频解析器的 `"textSource"` 同样是「多选一」的写法。模型照抄示例时，`structured_output` 会以参数校验失败拒绝——正好落进上面那条死路。示例改为合法取值，并在提示词里写明这些字段必须填本次实际值（照抄示例行数会截断原文）。
+- **提示词与宿主的结构化输出要求相抵**：获取与类型识别提示词都以「只输出 JSON」结尾，等于教子代理把 JSON 写在正文里；宿主的要求是必须以 `structured_output` 工具调用结束。改为按结构化输出通道提交。
+
+### Verification
+
+- 用确定性子代理重放获取阶段的四种返回值：`null`、`{ "saved": false }`、带 `message` 的 `{ "saved": false }` 以及抛错，确认前两条的消息不再相同、`message` 原样保留、抛错路径不变（`tests/workflow-regressions.test.js`）。
+- 新增示例校验测试：四个内置解析器的示例必须能被 `JSON.parse`，且 `language` 落在 schema 枚举内、`totalLines` 为数字、视频 `textSource` 在文档允许的取值内（`tests/parser-entry-audit.test.js`）。
+- 本地 Node 24 上 `npm test`、`npm run test:node`、`npm run lint`、`npm run security`、`npm run validate` 全绿；本次未做真实模型端到端调用。
+
+### Compatibility
+
+- 升级无需更改配置；返回结构（`ok` / `stage` / `fatal`）不变，变化只在失败消息文案与提示词。已有缓存与已保存的成稿不受影响。
+
+### 已知问题
+
+- 宿主把「子代理没调用 `structured_output`」和「子代理运行失败」都兑现成 `null`，插件无法区分，只能如实报告「未收到可用的获取结果」，不再猜测属于哪一种。
+
+### 贡献者与致谢
+
+- 感谢 @qneko 报告并复现获取阶段错误信息合并、提示词示例不合法的问题，并附上受控重放结果（[Issue #10](https://github.com/PensiveFei/deep-read-summarize/issues/10)）。
+
 ## [0.6.2] — 2026-11-11
 
 修复成稿包含前言或外层 Markdown 围栏时，笔记被误判为格式、篇幅和引用不合格的问题。
