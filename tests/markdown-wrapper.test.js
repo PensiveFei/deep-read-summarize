@@ -135,7 +135,8 @@ test('ambiguous or malformed wrappers retain the original reply and fail safely'
   ];
   for (const config of cases) {
     const { result, draftReply } = await run(config);
-    assert.equal(result.note, draftReply);
+    assert.ok(result.note.endsWith(draftReply), 'the ambiguous reply is retained verbatim after the warning');
+    assert.match(result.note, /^> \*\*质量提示：/);
     assert.equal(result.qualityPassed, false);
   }
 });
@@ -152,7 +153,9 @@ test('an extracted incomplete note still fails the actual structure check', asyn
   const { result, original } = await run({
     draft: note => fenced(note.replace('## 2. 结构拆解', '### 2. 结构拆解'))
   });
-  assert.equal(result.note, original.replace('## 2. 结构拆解', '### 2. 结构拆解'));
+  const expected = original.replace('## 2. 结构拆解', '### 2. 结构拆解');
+  assert.ok(result.note.endsWith(expected.slice(expected.indexOf('\n#') + 1)));
+  assert.match(result.note, /> \*\*质量提示：/);
   assert.equal(result.qualityChecks.formatComplete, false);
   assert.equal(result.qualityPassed, false);
   assert.ok(result.qualityIssues.some(issue => issue.includes('第 2 节')));
@@ -175,7 +178,8 @@ test('an incomplete wrapped repair does not replace the previous draft', async (
     failFirst: true,
     repair: note => fenced(note.replace('## 2. 结构拆解', '### 2. 结构拆解'))
   });
-  assert.equal(result.note, original);
+  assert.ok(result.note.endsWith(original.slice(original.indexOf('\n#') + 1)));
+  assert.match(result.note, /> \*\*质量提示：/);
   assert.equal(result.qualityPassed, false);
   assert.equal(checks.length, 1);
   assert.ok(result.qualityIssues.some(issue => issue.includes('保留上一份')));

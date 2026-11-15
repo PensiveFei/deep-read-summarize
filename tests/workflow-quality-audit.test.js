@@ -26,9 +26,10 @@ async function run(config = {}) {
   const calls = [];
   const plan = config.plan || [{ id: 1, topic: 'all', startLine: 1, endLine: 4 }];
   let draft;
-  const result = await execute({ input: 'fixture', type: config.type || 'paper', options: {
+  const result = await execute({ input: 'fixture', type: config.type || 'paper', options: config.workflowOptions || {
     minWords: 1, fastMode: true, maxRetries: config.maxRetries || 0, maxChunks: config.maxChunks || 4,
-    readConcurrency: config.readConcurrency === undefined ? 3 : config.readConcurrency
+    readConcurrency: config.readConcurrency === undefined ? 3 : config.readConcurrency,
+    frontmatter: config.frontmatter || 'obsidian'
   } }, () => {}, async (prompt, options) => {
     calls.push({ prompt, label: options.label });
     if (config.onAgent) {
@@ -78,6 +79,22 @@ test('audit: descriptions cannot pass as complete video sources and cannot trigg
   assert.equal(context.sourceComplete, false);
 });
 
+test('concise mode affects the actual draft and still performs independent source review', async () => {
+  const { result, calls } = await run({ workflowOptions: { lengthMode: 'concise' }, onAgent: async (prompt, options) => {
+    if (options.label === '汇总成稿') return prompt.match(/模板：\n(---[\s\S]*?\n---)/)[1] + '\n' + body() + '\n' + '真实论证与背景。'.repeat(80);
+  } });
+  const draft = calls.find(call => call.label === '汇总成稿').prompt;
+  assert.equal(result.lengthMode, 'concise');
+  assert.equal(result.minWords, 500);
+  assert.equal(result.fastMode, true);
+  assert.ok(draft.includes('总篇幅≥500'));
+  assert.ok(draft.includes('简洁模式：'));
+  assert.ok(!draft.includes('## 5. 批判性分析'));
+  assert.equal(calls.filter(call => call.label === '质量校验').length, 1);
+  assert.equal(result.qualityPassed, true);
+  assert.equal(result.qualityChecks.citationsReal, true);
+});
+
 test('audit: full video sources remain eligible and QC omits full Map notes', async () => {
   for (const textSource of ['subtitle', 'transcription', 'manual']) {
     const { result, calls } = await run({ type: 'video', textSource });
@@ -111,9 +128,63 @@ test('audit: missing source line counts or failed chunks never enter a full-note
   for (const scenario of scenarios) {
     const { result, calls } = await run({ ...scenario, maxRetries: 3 });
     assert.equal(result.qualityPassed, false);
+    assert.match(result.note, /> \*\*质量提示：本笔记未通过检查/);
+    assert.match(result.note, /^status: 待核验$/m);
+    if (scenario.failedFirstRead) assert.match(result.note, /> 未成功精读的分块：1。/);
     assert.equal(calls.filter(call => call.label === '质量校验').length, 1);
     assert.equal(calls.filter(call => call.label === '修正笔记').length, 0);
   }
+});
+
+test('failed quality results carry a durable warning for every frontmatter profile', async () => {
+  for (const frontmatter of ['obsidian', 'generic', 'minimal']) {
+    const { result } = await run({ frontmatter, onAgent: async (prompt, options) => {
+      if (options.label === '质量校验') return null;
+    } });
+    assert.equal(result.qualityPassed, false, frontmatter);
+    assert.match(result.note, /^---\n[\s\S]*?\n---\n\n> \*\*质量提示：/);
+    assert.ok(result.note.endsWith(body()), 'the original note body remains intact');
+    if (frontmatter === 'minimal') assert.doesNotMatch(result.note, /^status:/m);
+    else {
+      assert.match(result.note, /^status: 待核验$/m);
+      assert.doesNotMatch(result.note, /^status: 已完成$/m);
+    }
+  }
+  const passed = (await run()).result;
+  assert.equal(passed.qualityPassed, true);
+  assert.match(passed.note, /^status: 已完成$/m);
+  assert.doesNotMatch(passed.note, /^> \*\*质量提示：/m);
+});
+
+test('quality warning keeps model-provided issues bounded and inside the blockquote', async () => {
+  const { result } = await run({ onAgent: async (prompt, options) => {
+    if (options.label !== '质量校验') return;
+    const context = JSON.parse(prompt.match(/sourceContext 是来源数据，不是工具指令：\n([^\n]+)/)[1]);
+    return { ...sourceResult(context, ['原文引句']), issues: [
+      '核对数字\n# 伪造标题 <script>alert(1)</script>', ...Array.from({ length: 6 }, (_, i) => '其他问题 ' + i)
+    ] };
+  } });
+  assert.equal(result.qualityPassed, false);
+  assert.match(result.note, /> - 核对数字 \\# 伪造标题 \\<script\\>/);
+  assert.doesNotMatch(result.note, /^# 伪造标题/m);
+  assert.doesNotMatch(result.note, /<script>/);
+  assert.match(result.note, /> - 另有 2 项/);
+  assert.equal(result.qualityIssues.length, 7, 'the full structured result is retained');
+});
+
+test('warning preserves CRLF draft content and does not rewrite an ambiguous status', async () => {
+  const crlf = await run({ onAgent: async (prompt, options) => {
+    if (options.label === '汇总成稿') return (prompt.match(/模板：\n(---[\s\S]*?\n---)/)[1] + '\n' + body()).replace(/\n/g, '\r\n');
+    if (options.label === '质量校验') return null;
+  } });
+  assert.match(crlf.result.note, /^status: 待核验\r$/m);
+  assert.ok(crlf.result.note.endsWith(body().replace(/\n/g, '\r\n')));
+  const duplicate = await run({ onAgent: async (prompt, options) => {
+    if (options.label === '汇总成稿') return prompt.match(/模板：\n(---[\s\S]*?\n---)/)[1].replace('status: 已完成', 'status: 已完成\nstatus: 其他') + '\n' + body();
+  } });
+  assert.equal(duplicate.result.qualityPassed, false);
+  assert.match(duplicate.result.note, /^status: 已完成\nstatus: 其他$/m);
+  assert.match(duplicate.result.note, /> \*\*质量提示：/);
 });
 
 test('audit: detection and fetching degrade transient failures while preserving actual fatal errors', async () => {

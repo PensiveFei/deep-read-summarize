@@ -23,9 +23,11 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 ## 输入
 
 用户提供：内容链接或本地文件路径。
-可选参数：`type`（auto/book/paper/video/web）、`options`（minWords / fastMode / maxChunks / readConcurrency / parallelQuality / readCache / readCacheIdentity / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / cpuThreads / transcriptCache / outputDir / tempDir / frontmatter）。
+可选参数：`type`（auto/book/paper/video/web）、`options`（lengthMode / minWords / fastMode / maxChunks / readConcurrency / parallelQuality / readCache / readCacheIdentity / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / cpuThreads / transcriptCache / outputDir / tempDir / frontmatter）。
 
 优先调用插件提供的 `deep_read_summarize` 工具，参数为 `{ input, type, options }`。如果当前宿主没有这个工具，按技能末尾提供的 meta / script / args 调用 `workflow` 工具。两种入口执行相同的获取、精读与质量核验。
+
+如果用户明确要求“简洁笔记”或“简短精读”，可使用 `options: { "lengthMode": "concise" }`。它默认使用 `minWords: 500` 和 `fastMode: true`，并要求成稿避免无依据的扩写；原文和引文核验仍会执行。用户明确给出的设置优先：单独传入 `minWords` 可覆盖最低篇幅，要保留第 5–7 节则传入 `fastMode: false`。选择模式时不要照抄下方默认示例中的 `minWords: 2500` 或 `fastMode: false`，除非用户明确要求。`minWords` 是最低计数而不是字数上限，不能承诺输出恰好或不超过某个字数。
 
 `options.frontmatter` 决定 frontmatter 用哪套键（默认 `obsidian`，与历史行为一致）：
 - `obsidian`：title / aliases / author / year / type / url / tags / created / status —— 配 Dataview 用这套
@@ -50,7 +52,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 
 ## 输出
 
-精读工具返回 `{ ok, filePath, note, qualityPassed, qualityIssues, qualityChecks, qualityEvidence, failedChunks, coverageComplete, sourceComplete, textSource, timings, readTimings }`；可选 `draftContext` 记录成稿或修订稿的提取方式（`stage`、`kind`）及笔记前后额外文字（`before`、`after`），`kind` 为 `fenced` 或 `preamble`。`coverageComplete: false` 表示缺少有效总行数，无法确认尾部覆盖；`sourceComplete: false` 表示视频仅有简介或来源未确认，笔记会保留来源限制且质量降级。来源完整性仍依据获取代理声明，不能当作视频真实内容已全部证明。`timings` 提供 detect/fetch/read/draft/quality/total 毫秒耗时；`readTimings` 提供精读块的行号、毫秒耗时、成功状态及缓存命中状态，不能由此推测未提供的 token 用量。
+精读工具返回 `{ ok, filePath, note, lengthMode, minWords, fastMode, qualityPassed, qualityIssues, qualityChecks, qualityEvidence, failedChunks, coverageComplete, sourceComplete, textSource, timings, readTimings }`；可选 `draftContext` 记录成稿或修订稿的提取方式（`stage`、`kind`）及笔记前后额外文字（`before`、`after`），`kind` 为 `fenced` 或 `preamble`。质量未通过时，`note` 开头保留提示和最多 5 项问题；obsidian/generic 模板中可安全识别的 `status: 已完成` 会改为 `status: 待核验`。其余问题仍在 `qualityIssues` 中。`coverageComplete: false` 表示缺少有效总行数，无法确认尾部覆盖；`sourceComplete: false` 表示视频仅有简介或来源未确认，笔记会保留来源限制且质量降级。来源完整性仍依据获取代理声明，不能当作视频真实内容已全部证明。`timings` 提供 detect/fetch/read/draft/quality/total 毫秒耗时；`readTimings` 提供精读块的行号、毫秒耗时、成功状态及缓存命中状态，不能由此推测未提供的 token 用量。
 
 > ⚠️ **`note` 就是完整笔记正文，`filePath` 只是建议路径**：脚本运行在无文件系统的沙箱里（DSH 的 workflow 契约：脚本只负责协调子代理），**它不会替你写文件**。必须由你（主代理）在拿到结果后用 `write` 工具把它写到 `filePath`——默认 `./output/`，可用 `options.outputDir` 指向 Obsidian 仓库或静态站点的内容目录。
 

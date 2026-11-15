@@ -148,6 +148,32 @@ test('thin tool submits loaded code with defaults, caller context and complete q
   assert.deepEqual(state.disposed, ['skill', 'tool']);
 });
 
+test('tool applies per-call length presets without losing explicit overrides or profile settings', async () => {
+  let request;
+  const state = host({ start(input) {
+    request = input;
+    return { result: Promise.resolve({ stopReason: 'completed', value: { ok: false } }), async dispose() {} };
+  } });
+  plugin.apply(state.ctx, { options: { lengthMode: 'concise', minWords: 700, fastMode: false } });
+  const tool = state.tools[0], execute = options => tool.execute({ input: 'fixture', options }, { agent: {} });
+  await execute({});
+  assert.equal(request.args.options.minWords, 700);
+  assert.equal(request.args.options.fastMode, false);
+  await execute({ lengthMode: 'concise' });
+  assert.equal(request.args.options.minWords, 500);
+  assert.equal(request.args.options.fastMode, true);
+  await execute({ lengthMode: 'concise', minWords: 800, fastMode: false });
+  assert.equal(request.args.options.minWords, 800);
+  assert.equal(request.args.options.fastMode, false);
+  await execute({ lengthMode: 'standard' });
+  assert.equal(request.args.options.minWords, 2500);
+  assert.equal(request.args.options.fastMode, false);
+  await execute({ minWords: 600 });
+  assert.equal(request.args.options.lengthMode, 'concise');
+  assert.equal(request.args.options.minWords, 600);
+  assert.equal(request.args.options.fastMode, false);
+});
+
 test('thin tool disposes failed and cancelled runs and refuses invalid or already cancelled requests', async () => {
   for (const stopReason of ['error', 'cancelled']) {
     let disposed = 0;

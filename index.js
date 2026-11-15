@@ -62,7 +62,7 @@ function buildSkillContent(config = {}, runtime = {}) {
   if (runtime.toolName) {
     return [body.trim(), '', '## 调用精读工具',
       '调用 `' + runtime.toolName + '`，只提交 input / type / options。工具返回完整 note 与建议 filePath；必须按上文执行同名文件询问、落盘和质量报告。',
-      'args 示例（options 是本 profile 的默认值，用户另有要求时再覆盖）：',
+      'args 示例（options 是本 profile 的默认值；选择 lengthMode 预设时，省略用户未明确指定的 minWords 和 fastMode，以免示例默认值覆盖预设）：',
       '```json', JSON.stringify(argsExample, null, 2), '```'].join('\n');
   }
   return [
@@ -81,7 +81,7 @@ function buildSkillContent(config = {}, runtime = {}) {
     workflow.buildSelfContainedScript(runtime.registry || configuredRegistry(config)),
     '```',
     '',
-    'args 示例（options 是本 profile 的默认值，用户另有要求时再覆盖）：',
+    'args 示例（options 是本 profile 的默认值；选择 lengthMode 预设时，省略用户未明确指定的 minWords 和 fastMode，以免示例默认值覆盖预设）：',
     '```json',
     JSON.stringify(argsExample, null, 2),
     '```'
@@ -118,7 +118,15 @@ function readingTool(engine, defaults, registry) {
       if (typeof args.input !== 'string' || !args.input.trim()) throw new Error('[FATAL] args.input 必须是非空字符串');
       if (args.type !== undefined && typeof args.type !== 'string') throw new Error('[FATAL] args.type 必须是字符串');
       if (args.options !== undefined && (!args.options || typeof args.options !== 'object' || Array.isArray(args.options))) throw new Error('[FATAL] options 必须是对象');
-      const options = normalizeWorkflowOptions(Object.assign({}, defaults, args.options));
+      const overrides = args.options || {};
+      const merged = Object.assign({}, defaults, overrides);
+      // Selecting a preset for this invocation replaces the profile's length
+      // defaults, but explicit per-invocation choices still take precedence.
+      if (Object.prototype.hasOwnProperty.call(overrides, 'lengthMode') && overrides.lengthMode !== undefined) {
+        if (overrides.minWords === undefined) delete merged.minWords;
+        if (overrides.fastMode === undefined) delete merged.fastMode;
+      }
+      const options = normalizeWorkflowOptions(merged);
       if (!exec || !exec.agent) throw new Error('deep_read_summarize requires a calling agent');
       if (exec.signal && exec.signal.aborted) throw new Error('deep_read_summarize was cancelled before start');
       const startArgs = { input: args.input, type: args.type || 'auto', options: options };

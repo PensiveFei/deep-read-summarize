@@ -35,6 +35,8 @@ Quality checks combine code and source review. Code validates the supplied scala
 
 Direct workflow options are strict: `minWords` is an integer in 1–100000, `maxChunks` is a positive integer (values above 12 are capped), `readConcurrency` is an integer in 1–12, and `maxRetries` is an integer in 0–3. Invalid values and unknown keys fail before work begins. Plugin profile configuration instead warns per invalid field and uses its default, preserving host startup.
 
+`lengthMode` is `standard` (default) or `concise`. Setting `concise` alone defaults to a minimum count of 500 and `fastMode: true`; `minWords` and `fastMode` explicitly provided in the same call or profile override the preset. When a plugin-tool call explicitly selects a mode, its defaults replace the profile's length defaults before per-call overrides are applied. Without a per-call mode, profile settings remain in effect. Concise mode does not impose a maximum or skip source review. The example below explicitly lists standard-mode `minWords` and `fastMode`; remove those two values when switching to a preset if its defaults are desired.
+
 ```
 parsers/         Parsers for each input type, dispatched by type
   book.js        Books: PDF/EPUB/MOBI text extraction, chapter chunking
@@ -69,6 +71,7 @@ The `deep_read_summarize` tool takes these parameters directly. On older hosts, 
   "input": "https://arxiv.org/abs/2307.09042",  // link or file path
   "type": "auto",   // auto | book | paper | video | web
   "options": {
+    "lengthMode": "standard", // standard | concise
     "minWords": 2500,
     "fastMode": false,        // true skips sections 5-7, faster
     "maxChunks": 4,           // chunk limit, 1-12

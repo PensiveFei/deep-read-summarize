@@ -63,6 +63,8 @@ https://arxiv.org/abs/2307.09042
 
 You can also provide a local file, web page, or video link. If needed, specify an output location, sections to retain, or whether you want timestamps.
 
+For a shorter note, ask for “a concise reading note with key points, terminology, and quotations.” The main agent can select concise mode, which defaults to a minimum count of 500 and omits sections 5–7 while retaining source review. Ask explicitly if you also want critical analysis or the other optional sections. The minimum is not a length cap; the model determines the actual output length.
+
 Hosts with plugin-tool support register `deep_read_summarize`; older hosts use the bundled skill and workflow entry point. The tool returns the note and a suggested path; **the main agent must write the file**. Check that the file was saved and whether the result reports gaps or quality issues.
 
 When an identifiable note is extracted from a wrapper, the optional `draftContext` field records the extraction and retains any surrounding text. That text is not part of the note reviewed against the source.
@@ -89,6 +91,8 @@ When an identifiable note is extracted from a wrapper, the optional `draftContex
 
 The workflow normalizes chunk ranges and checks coverage of known source line numbers. After drafting, code checks format and length, and an independent review agent reads the obtained text to check chunk coverage and key quotations. Results are available through `qualityPassed`, `qualityChecks`, and `qualityEvidence`.
 
+When quality checks fail, the saved note includes a notice, failed chunks, and up to five issues. The completion status in the default Obsidian and generic templates is changed to “pending review” when it can be identified safely. The complete issue list remains in `qualityIssues`.
+
 These checks have limits:
 
 - **`qualityPassed` does not prove factual accuracy.** Coverage and source authenticity still depend on the reviewing agent reading and evaluating the source. Check important claims, numbers, and quotations yourself.
@@ -100,6 +104,7 @@ These checks have limits:
 
 | Option | Default | Purpose |
 | --- | --- | --- |
+| `lengthMode` | `standard` | Set to `concise` for the preset: `minWords: 500` and `fastMode: true` by default |
 | `minWords` | `2500` | Minimum length; the check counts Chinese characters and words in other text |
 | `fastMode` | `false` | Omit the critical analysis, personal applications, and further-reading sections |
 | `maxChunks` | `4` | Chunk-count limit, capped at 12; this is not the concurrency setting |
@@ -114,6 +119,8 @@ These checks have limits:
 | `transcriptCache` | `true` | Reuse validated transcripts when the audio and configuration match |
 | `parallelQuality` | `false` | Opt in to parallel source review; the original review path remains the default |
 | `readCache` | `false` | Optional cross-run chunk cache; supported by the plugin tool only |
+
+For a direct call, use `options: { "lengthMode": "concise" }`. Explicit `minWords` and `fastMode` values in that call override the preset; for example, `"fastMode": false` retains all sections. Concise mode aims near the minimum but does not impose a maximum length.
 
 To enable `readCache`, also set `readCacheIdentity` to include the provider, pinned model version, and output-affecting settings; change it whenever those change. The caller supplies this identity, and the host cannot verify it automatically. Cache entries are local plaintext and may contain source excerpts; cache hits still receive independent source review.
 

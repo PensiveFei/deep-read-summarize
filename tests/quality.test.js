@@ -176,7 +176,8 @@ test('B04 preserves the previous valid note when repair is empty, rejected, or s
   for (const config of [{ repair: null }, { repair: '   ' }, { repair: {} }, { repair: '# truncated' }, { throwRepair: true }]) {
     const { result, originalNote } = await run({ ...config, firstCheckFails: true, maxRetries: 1 });
     assert.equal(result.ok, true);
-    assert.equal(result.note, originalNote);
+    assert.ok(result.note.endsWith(originalNote.slice(originalNote.indexOf('\n#') + 1)));
+    assert.match(result.note, /> \*\*质量提示：/);
     assert.equal(result.qualityPassed, false);
     assert.ok(result.qualityIssues.some(issue => issue.includes('保留上一份')));
   }
@@ -205,7 +206,8 @@ test('O01 source evidence and deterministic checks must both pass', async () => 
 test('O01 checker failure and failed Map chunks preserve note and expose evidence gaps', async () => {
   const failedCheck = await run({ throwCheck: true });
   assert.equal(failedCheck.result.ok, true);
-  assert.equal(failedCheck.result.note, failedCheck.originalNote);
+  assert.ok(failedCheck.result.note.endsWith(failedCheck.originalNote.slice(failedCheck.originalNote.indexOf('\n#') + 1)));
+  assert.match(failedCheck.result.note, /> \*\*质量提示：/);
   assert.equal(failedCheck.result.qualityPassed, false);
   const failedRead = await run({ readFailure: true, twoChunks: true });
   assert.equal(failedRead.result.ok, true);

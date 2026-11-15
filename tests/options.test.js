@@ -20,6 +20,38 @@ test('B07 the embedded validator and plugin config share exactly the same defaul
   assert.ok(workflow.script.includes('const normalizeWorkflowOptions = '));
 });
 
+test('concise length mode supplies defaults while explicit options win', function () {
+  const standard = normalizeWorkflowOptions();
+  assert.equal(standard.lengthMode, 'standard');
+  assert.equal(standard.minWords, 2500);
+  assert.equal(standard.fastMode, false);
+  const concise = normalizeWorkflowOptions({ lengthMode: 'Concise' });
+  assert.equal(concise.lengthMode, 'concise');
+  assert.equal(concise.minWords, 500);
+  assert.equal(concise.fastMode, true);
+  assert.deepEqual(normalizeWorkflowOptions(concise), concise, 'normalization remains idempotent');
+  const custom = normalizeWorkflowOptions({ lengthMode: 'concise', minWords: 800, fastMode: false });
+  assert.equal(custom.minWords, 800);
+  assert.equal(custom.fastMode, false);
+  assert.deepEqual(plugin.normalizeOptions({ options: { lengthMode: 'concise', minWords: 800 } }).minWords, 800);
+  assert.throws(() => normalizeWorkflowOptions({ lengthMode: 'brief' }), /\[FATAL\] options\.lengthMode/);
+  const warnings = [];
+  const invalid = normalizeWorkflowOptions({ lengthMode: 'brief' }, { mode: 'config', warn: value => warnings.push(value) });
+  assert.equal(invalid.lengthMode, 'standard');
+  assert.equal(invalid.minWords, 2500);
+  assert.ok(warnings.some(value => value.includes('lengthMode')));
+  const invalidControl = normalizeWorkflowOptions({ lengthMode: 'concise\n' }, { mode: 'config', warn: () => {} });
+  assert.equal(invalidControl.lengthMode, 'standard');
+  assert.equal(invalidControl.minWords, 2500);
+  assert.equal(invalidControl.fastMode, false);
+  const inherited = normalizeWorkflowOptions(Object.create({ lengthMode: 'concise' }));
+  assert.equal(inherited.lengthMode, 'standard');
+  assert.equal(inherited.minWords, 2500);
+  assert.equal(inherited.fastMode, false);
+  const embedded = vm.runInNewContext('(' + normalizeWorkflowOptions.toString() + ')');
+  assert.deepEqual(JSON.parse(JSON.stringify(embedded({ lengthMode: 'concise' }))), concise);
+});
+
 test('B07 invalid numeric options reject nonfinite, fractional, negative and excessive retry values', function () {
   for (const [key, values] of [
     ['minWords', [0, -1, 1.5, NaN, Infinity, 100001, '2500']],

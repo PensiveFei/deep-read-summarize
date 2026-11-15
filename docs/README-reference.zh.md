@@ -35,6 +35,8 @@ Markdown 笔记
 
 直接调用 workflow 的 options 必须类型正确：`minWords` 为 1–100000 的整数，`maxChunks` 为正整数（大于 12 仍夹到 12），`readConcurrency` 为 1–12 的整数，`maxRetries` 为 0–3 的整数；非法值和未知键在启动时 FATAL。插件 profile 的 config 则逐项告警并回退默认值，避免阻止宿主启动。
 
+`lengthMode` 可选 `standard`（默认）或 `concise`。单独设置 `concise` 时，默认最低计数为 500，`fastMode` 为 true；同一次调用或配置中显式设置的 `minWords` 和 `fastMode` 优先。插件工具单次调用显式选择模式时，会重新应用该模式的默认值，再应用本次显式覆盖；未指定模式时沿用 profile 的设置。简洁模式不是最大字数限制，也不会跳过原文核验。下面示例显式列出标准档的 `minWords` 和 `fastMode`，切换模式时若要使用预设，请移除这两个显式值。
+
 ```
 parsers/         各输入类型的解析器，按类型分发
   book.js        书籍：PDF/EPUB/MOBI 文本提取、章节分块
@@ -68,6 +70,7 @@ workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema �
   "input": "https://arxiv.org/abs/2307.09042",  // 链接或文件路径
   "type": "auto",   // auto | book | paper | video | web
   "options": {
+    "lengthMode": "standard", // standard | concise
     "minWords": 2500,
     "fastMode": false,        // true 时跳过 5-7 节，速度快一些
     "maxChunks": 4,           // 分块上限，1-12

@@ -24,6 +24,7 @@ if (args && args.type !== undefined && typeof args.type !== "string") throw new 
 const input = (args && args.input || "").trim();
 const forcedType = ((args && args.type) || "auto").toLowerCase();
 const options = normalizeWorkflowOptions(args && args.options);
+const lengthMode = options.lengthMode;
 const minWords = options.minWords;
 const fastMode = options.fastMode;
 const maxChunks = options.maxChunks;
@@ -389,7 +390,7 @@ const draftPrompt = [
 ].concat(fm, [
   "# 《" + finalTitle + "》深度精读笔记", "",
   "> 一句话核心概括。", "",
-  "## 1. 概述（约500字：主题/背景/核心问题/总体结论）", "",
+  "## 1. 概述（主题/背景/核心问题/总体结论，篇幅与整篇笔记相协调）", "",
   "## 2. 结构拆解（按主题组织，含详细要点；关键结论标注原文出处）", "",
   "## 3. 关键概念与术语表（表格）", "",
   "## 4. 关键引用（仅关键结论" + (requireCitations ? "，必须标注页码/章节/段落" : "") + "）",
@@ -398,6 +399,7 @@ const draftPrompt = [
   "---",
   "*笔记整理于 " + today + "*", "",
   "硬性要求：总篇幅≥" + minWords + "字；语言与原文一致；术语统一；引用必须真实；视频" + (includeTimestamps ? "标注时间戳" : "不标注时间戳") + "。",
+  lengthMode === "concise" ? "简洁模式：在满足最低篇幅、关键内容和引文要求的前提下尽量接近最低篇幅；不要为凑长度重复或添加无原文依据的内容。" : "",
   "输出前自检：1)覆盖所有块 2)frontmatter完整 3)各小节齐全 4)引用真实 5)篇幅达标 6)语言一致。",
   "",
   "各块精读结果：",
@@ -605,10 +607,43 @@ if (!sourceComplete) {
     .filter(function (line) { return line.trim() !== sourceNotice; }).join("\n").replace(/^\s*\n/, "");
   verified = prefix + sourceNotice + "\n\n" + body;
 }
+if (!passed) {
+  // Keep the quality result with the saved note, including when the main
+  // agent's chat response is no longer available. A malformed draft is kept
+  // verbatim after the notice; only the known template status is changed.
+  const front = verified.match(/^\s*---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/);
+  let prefix = front ? front[0] : "";
+  let body = front ? verified.slice(front[0].length).replace(/^\r?\n/, "") : verified;
+  if (front && fmProfile !== "minimal" && (prefix.match(/^status:[^\r\n]*/gm) || []).length === 1) {
+    prefix = prefix.replace(/^(status:[ \t]*)(?:"已完成"|'已完成'|已完成)([ \t]*(?:#[^\r\n]*)?)(\r?)$/m, "$1待核验$2$3");
+  }
+  // The existing video-source disclosure must remain first and appear once.
+  let sourcePrefix = "";
+  if (!sourceComplete && body.indexOf(sourceNotice) === 0) {
+    sourcePrefix = sourceNotice + "\n\n";
+    body = body.slice(sourceNotice.length).replace(/^\r?\n\r?\n/, "");
+  }
+  function displayIssue(value) {
+    let line = value.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
+    if (line.length > 240) line = line.slice(0, 240) + "…";
+    // Issues may be supplied by a model: keep them inside the blockquote and
+    // render markup as text rather than allowing injected headings or HTML.
+    return line.replace(/([\\`*_[\]{}<>!#])/g, "\\$1");
+  }
+  const visibleIssues = issues.filter(function (issue) { return typeof issue === "string" && issue.trim(); });
+  const notice = ["> **质量提示：本笔记未通过检查，请对照原文复核。**"];
+  if (failedChunkIds.length) notice.push("> 未成功精读的分块：" + failedChunkIds.join("、") + "。");
+  if (visibleIssues.length) {
+    notice.push(">", "> 需要复核：");
+    visibleIssues.slice(0, 5).forEach(function (issue) { notice.push("> - " + displayIssue(issue)); });
+    if (visibleIssues.length > 5) notice.push("> - 另有 " + (visibleIssues.length - 5) + " 项，请查看本次精读结果中的完整问题列表。");
+  } else notice.push("> 请查看本次精读结果中的质量详情。");
+  verified = (prefix ? prefix.replace(/[\r\n]+$/, "") + "\n\n" : "") + sourcePrefix + notice.join("\n") + "\n\n" + body;
+}
 timings.quality = Date.now() - qualityStartedAt;
 return timedResult({
   ok: true, kind: kind, title: finalTitle,
-  filePath: mdPath, chunksCount: chunkPlan.length, fastMode: fastMode,
+  filePath: mdPath, chunksCount: chunkPlan.length, lengthMode: lengthMode, minWords: minWords, fastMode: fastMode,
   qualityPassed: passed, qualityIssues: issues,
   qualityChecks: qualityChecks, qualityEvidence: qualityEvidence,
   failedChunks: failedChunks,
