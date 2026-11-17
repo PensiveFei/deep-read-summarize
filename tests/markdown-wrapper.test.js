@@ -65,9 +65,13 @@ async function run(config = {}) {
     throw new Error('unexpected agent call: ' + options.label);
   };
   const result = await execute({
-    input: 'fixture', type: 'paper',
+    input: 'fixture', type: 'paper', __hostVerification: true,
     options: { fastMode: !config.full, minWords: 800, maxRetries: config.repair ? 1 : 0, requireCitations: true }
   }, () => {}, agent, functions => Promise.all(functions.map(fn => fn())), () => {});
+  if (result.ok) {
+    assert.equal(result.qualityPassed, false, 'sandbox alone cannot verify citations');
+    assert.equal(result.citationVerification.status, 'unverified');
+  }
   return { result, checks, original, draftReply, repairReply };
 }
 
@@ -80,10 +84,10 @@ test('a single wrapped draft is checked and returned as the same note', async ()
     note => 'Here is the note.\n\n' + note
   ]) {
     const { result, checks, original } = await run({ draft: wrap });
-    assert.equal(result.qualityPassed, true);
-    assert.equal(result.note, original);
+    assert.equal(result.__verificationCandidate.passed, true);
+    assert.equal(result.__verificationCandidate.note, original);
     assert.deepEqual(checks[0].quotes, ['原文引句']);
-    assert.ok(checks[0].prompt.endsWith('\n笔记：\n' + result.note));
+    assert.ok(checks[0].prompt.endsWith('\n笔记：\n' + result.__verificationCandidate.note));
   }
 });
 
@@ -91,8 +95,8 @@ test('extra text outside an extracted note remains visible as context', async ()
   const { result, original } = await run({
     draft: note => '来源有额外说明。\n\n' + fenced(note) + '\n\n请核对这一说明。'
   });
-  assert.equal(result.qualityPassed, true);
-  assert.equal(result.note, original);
+  assert.equal(result.__verificationCandidate.passed, true);
+  assert.equal(result.__verificationCandidate.note, original);
   assert.deepEqual(result.draftContext, [{
     stage: 'draft', kind: 'fenced', before: '来源有额外说明。', after: '请核对这一说明。'
   }]);
@@ -100,18 +104,18 @@ test('extra text outside an extracted note remains visible as context', async ()
 
 test('ordinary inner code fences remain in the note and do not count as prose', async () => {
   const plain = await run({ withCode: true });
-  assert.equal(plain.result.qualityPassed, true);
-  assert.equal(plain.result.note, plain.original);
+  assert.equal(plain.result.__verificationCandidate.passed, true);
+  assert.equal(plain.result.__verificationCandidate.note, plain.original);
   assert.equal(plain.result.draftContext, undefined);
   for (const marker of ['~'.repeat(3), tick.repeat(4)]) {
     const wrapped = await run({ withCode: true, draft: note => fenced(note, marker) });
-    assert.equal(wrapped.result.qualityPassed, true);
-    assert.equal(wrapped.result.note, wrapped.original);
+    assert.equal(wrapped.result.__verificationCandidate.passed, true);
+    assert.equal(wrapped.result.__verificationCandidate.note, wrapped.original);
     assert.equal(wrapped.result.qualityChecks.wordCount, plain.result.qualityChecks.wordCount);
   }
   const preamble = await run({ withCode: true, draft: note => '整理后的笔记：\n\n' + note });
-  assert.equal(preamble.result.qualityPassed, true);
-  assert.equal(preamble.result.note, preamble.original);
+  assert.equal(preamble.result.__verificationCandidate.passed, true);
+  assert.equal(preamble.result.__verificationCandidate.note, preamble.original);
   assert.equal(preamble.result.qualityChecks.wordCount, plain.result.qualityChecks.wordCount);
 });
 
@@ -120,8 +124,8 @@ test('CRLF wrappers preserve the full seven-section note', async () => {
     full: true,
     draft: note => ('Here is the note.\n\n' + fenced(note)).replace(/\n/g, '\r\n')
   });
-  assert.equal(result.qualityPassed, true);
-  assert.equal(result.note, original.replace(/\n/g, '\r\n'));
+  assert.equal(result.__verificationCandidate.passed, true);
+  assert.equal(result.__verificationCandidate.note, original.replace(/\n/g, '\r\n'));
   assert.deepEqual(result.draftContext, [{ stage: 'draft', kind: 'fenced', before: 'Here is the note.', after: '' }]);
 });
 
@@ -166,10 +170,10 @@ test('a wrapped repair is normalized before acceptance and source rechecking', a
     failFirst: true,
     repair: note => '修订如下。\n\n' + fenced(note.replace('## 1. 概述', '## 1. 概述\n修订后的术语一致。'))
   });
-  assert.equal(result.qualityPassed, true);
+  assert.equal(result.__verificationCandidate.passed, true);
   assert.equal(checks.length, 2);
-  assert.equal(result.note, original.replace('## 1. 概述', '## 1. 概述\n修订后的术语一致。'));
-  assert.ok(checks[1].prompt.endsWith('\n笔记：\n' + result.note));
+  assert.equal(result.__verificationCandidate.note, original.replace('## 1. 概述', '## 1. 概述\n修订后的术语一致。'));
+  assert.ok(checks[1].prompt.endsWith('\n笔记：\n' + result.__verificationCandidate.note));
   assert.deepEqual(result.draftContext, [{ stage: 'repair', kind: 'fenced', before: '修订如下。', after: '' }]);
 });
 

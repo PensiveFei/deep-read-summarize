@@ -21,7 +21,7 @@ function bashStep(name) {
 }
 const preCheckout = bashStep('Validate tag reference before checkout');
 const postCheckout = bashStep('Guard package.json version against the ref');
-const bash = process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash';
+const bash = process.env.DEEP_READ_TEST_BASH || (process.platform === 'win32' ? 'C:\\Program Files\\Git\\bin\\bash.exe' : 'bash');
 const sha = 'a'.repeat(40);
 const workflowSha = 'b'.repeat(40);
 function identity(dryRun = false) {
@@ -72,6 +72,7 @@ test('B10 actual pre-checkout Bash rejects branch-shaped and malformed refs befo
     ]) {
       const result = spawnSync(bash, ['-s'], { input: 'git() { touch "$SENTINEL"; return 99; }\n' + preCheckout,
         encoding: 'utf8', env: Object.assign({}, process.env, { SENTINEL: sentinel.replace(/\\/g, '/'), CORRELATION_ID: 'fixture', DRY_RUN: 'false' }, values) });
+      assert.notEqual(result.status, null, 'Bash must actually start: ' + (result.error && result.error.message));
       assert.notEqual(result.status, 0, result.stdout + result.stderr);
       assert.equal(fs.existsSync(sentinel), false);
     }

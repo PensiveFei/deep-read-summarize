@@ -37,6 +37,17 @@ module.exports = {
     const degradeMsg = "需要人工提供转写文本或视频文案";
     const sourceUrl = String(input).match(/https?:\/\/[^\s<>"']+/i);
     const source = sourceUrl ? sourceUrl[0] : String(input);
+    if (!sourceUrl && /\.(?:txt|md|markdown)$/i.test(source.trim())) {
+      return prompt.buildFetchPrompt({
+        input: input, opts: o, fetchTarget: "用户提供的视频逐字稿文本", kindLabel: "视频（video）",
+        steps: [
+          "直接读取用户提供的本地文本，并逐字写入目标文件；metadata.textSource 填 manual。不得联网获取视频或启动音频转写。",
+          "仅依据已提供的文本组织内容；无法由文本本身确定是否覆盖了整个视频。"
+        ],
+        chunkRule: "文本中的主题与段落",
+        jsonExample: '{ "kind": "video", "saved": true, "totalLines": 200, "metadata": { "title": "", "author": "", "year": "", "language": "zh", "textSource": "manual" }, "chunkPlan": [ { "id": 1, "topic": "主题段", "startLine": 1, "endLine": 200 } ] }'
+      });
+    }
     const isBilibili = /^https?:\/\/(?:[^/?#]*@)?(?:[^/?#:]+\.)?(?:bilibili\.com|b23\.tv)(?=[:/?#]|$)/i.test(source);
     const pageMatch = isBilibili ? source.split('#')[0].match(/[?&]p=([^&#]*)/) : null;
     let pageValue = pageMatch ? pageMatch[1] : '';

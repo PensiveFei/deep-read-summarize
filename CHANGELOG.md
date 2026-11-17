@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.5] — 2026-11-17
+
+区分来源是否完整，在宿主侧核对原文引句，并提供可复现的精读质量基准。
+
+### Added
+
+- `sourceStatus` 使用 `complete` / `partial` / `unknown`；结果与笔记均保留状态。`complete` 仅表示获取结果与用户提供的本地纯文本逐字节一致；远程来源、PDF 提取和视频字幕/转写默认 `unknown`，已知只取得部分内容时为 `partial`。
+- 插件工具在获取后与核验后检查本次源文件，在宿主侧逐条核对第 4 节识别出的引文和原文摘录是否出现在所报行范围内，并核对实际行数；结果以 `citationVerification` 报告。不可读取、变化、超限或不匹配均不能冒充通过。
+- `benchmarks/quality` 提供 16 条短样本、参考要点及离线准备和计分工具，含 4 条标注来源的真实摘录与 12 条模拟材料。关键事实和结论的语义评分由审阅者填写；没有人工复核时不生成语义分数。
+- 本地视频逐字稿文本可直接作为 `video` 输入，不启动音频下载或转写。
+
+### Compatibility and limitations
+
+- 兼容字段 `sourceComplete` 仅在 `sourceStatus: complete` 时为 true；false 包括 partial 与 unknown。其他质量检查可在 unknown 时通过，但不能由此认定源资料完整。已知 partial 仍会导致质量未通过。
+- 旧式裸 workflow 无宿主文件访问；需要核验引用时返回 `citationVerification.status: unverified` 并标为待核验。插件工具入口先获取再继续工作流，原有 `readCache` 仍按成功验证后写入。
+- 宿主侧核验的获取文本限于本次任务内不超过 32 MiB 的有效 UTF-8 普通文件；过长引用范围、文件变化或符号链接无法通过。无法发现运行期间短暂改变后又恢复原状的文件。程序不验证引用以外的结论、改写、字幕准确性或原始资料是否完整。
+- 基准样本和参考标注由 AI 助手整理，尚未独立人工复核，也没有本版本的真实模型评分；模拟短文本不能代表长文、OCR、图表或完整视频。
+
+### Verification
+
+- 测试覆盖伪造或错行引文、来源不可读或变化、行数不一致、本地文本匹配、来源状态、缓存路径及旧 workflow 的未核验降级；基准工具测试覆盖未评审、错引文、人工复核统计和可比较性门禁。
+- 在隔离的 DSH `0.2.1-rc.2` headless profile 中安装本地包，确认插件工具注册和 workflowEngine 服务可用。
+- 本版未运行真实 DSH 模型端到端测试；模型生成质量与实际宿主行为仍需在用户环境中验证。
+
 ## [0.6.4] — 2026-11-15
 
 让未通过核验的笔记保留清晰状态与原因，并支持直接请求简洁精读笔记。

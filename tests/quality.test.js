@@ -157,9 +157,13 @@ async function run(config = {}) {
     }
     throw new Error('unexpected ' + options.label);
   };
-  const result = await execute({ input: 'fixture', type: 'paper', options: {
+  const result = await execute({ input: 'fixture', type: 'paper', __hostVerification: true, options: {
     minWords: config.minWords || 1, fastMode: true, maxRetries: config.maxRetries || 0
   } }, () => {}, agent, functions => Promise.all(functions.map(fn => fn())), () => {});
+  if (result.ok) {
+    assert.equal(result.qualityPassed, false, 'sandbox cannot verify citations');
+    assert.equal(result.citationVerification.status, 'unverified');
+  }
   return { result, calls, originalNote };
 }
 
@@ -185,14 +189,14 @@ test('B04 preserves the previous valid note when repair is empty, rejected, or s
 
 test('B04 accepts a usable repair and rechecks the replacement against the source', async () => {
   const { result, calls } = await run({ firstCheckFails: true, successfulRepair: true, maxRetries: 1 });
-  assert.equal(result.qualityPassed, true);
+  assert.equal(result.__verificationCandidate.passed, true);
   assert.ok(result.note.includes('修订后的术语一致'));
   assert.equal(calls.filter(call => call.options.label === '质量校验').length, 2);
 });
 
 test('O01 source evidence and deterministic checks must both pass', async () => {
   const valid = await run();
-  assert.equal(valid.result.qualityPassed, true);
+  assert.equal(valid.result.__verificationCandidate.passed, true);
   assert.equal(valid.result.qualityChecks.formatComplete, true);
   assert.equal(valid.result.qualityChecks.sourceChecked, true);
   assert.equal(valid.result.qualityEvidence.citationChecks.length, 1);

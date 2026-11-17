@@ -82,7 +82,8 @@ function buildSelfContainedScript(parserRegistry = parsers.registry) {
     'const normalizeWorkflowOptions = ' + normalizeWorkflowOptions.toString() + ';\n' +
     'const __quality = { extractNote: ' + quality.extractNote.toString() +
     ', checkNoteStructure: ' + quality.checkNoteStructure.toString() +
-    ', validateSourceCheck: ' + quality.validateSourceCheck.toString() + ' };\n' +
+    ', validateSourceCheck: ' + quality.validateSourceCheck.toString() +
+    ', decorateNote: ' + quality.decorateNote.toString() + ' };\n' +
     RAW_SCRIPT.replace(marker, impl + "\nconst parsers = args._parsers || __parsers;");
 }
 

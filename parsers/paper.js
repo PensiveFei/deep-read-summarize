@@ -19,7 +19,7 @@ module.exports = {
       fetchTarget: "论文全文",
       kindLabel: "学术论文（paper）",
       steps: [
-        "获取全文：arXiv→访问 abs 页取 PDF/HTML 全文；PDF→read 或 pdftotext；HTML→提取正文（去导航/广告）。",
+        "获取文本：arXiv→访问 abs 页取 PDF/HTML 全文；PDF→read 或 pdftotext；HTML→提取正文（去导航/广告）；用户提供的本地纯文本→直接读取，不要尝试当作网址或 PDF。",
         "全文写入目标文件（不截断、不加评注），用 read 确认总行数。",
         "识别论文结构：Abstract/Introduction/Methods/Results/Discussion/Conclusion/Appendix 及各表图行号范围。"
       ],

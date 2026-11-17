@@ -89,13 +89,17 @@ https://arxiv.org/abs/2307.09042
 
 ## 结果能信到什么程度？
 
-工作流会规范化分块范围，检查已知原文行号的覆盖情况；成稿后，程序检查格式和篇幅，并由独立核验代理读取取得的文本，检查分块覆盖与关键引文。核验结果可通过 `qualityPassed`、`qualityChecks` 和 `qualityEvidence` 查看。
+工作流会规范化分块范围，程序检查格式和篇幅，独立核验代理读取取得的文本并给出分块与引文证据。插件工具入口还会在宿主侧读取本次原文，对照文件实际行数和第 4 节提取出的逐字引文；读取失败、原文变化或引文不匹配时不会标为通过。结果可通过 `qualityPassed`、`qualityChecks`、`qualityEvidence` 和 `citationVerification` 查看。
+
+`sourceStatus` 表示来源状态：`complete` 仅表示获取的文本与用户提供的本地纯文本逐字节一致；`partial` 表示已知只取得部分内容；`unknown` 表示无法确认完整性，包括网页、PDF 提取结果和视频字幕/转写。`sourceComplete` 保留为兼容布尔值，仅 `complete` 时为 `true`；`false` 同时涵盖 `partial` 与 `unknown`。来源状态会写进笔记，`unknown` 下即使其他检查通过，也不能断言取得了原始来源全文。
+
+`citationVerification.status` 为 `verified`、`mismatch`、`unverified` 或 `not_applicable`。旧式裸 workflow 入口没有宿主文件读取能力：需要核验引文时，它会报告 `unverified` 和质量未通过。程序匹配只检查第 4 节识别出的逐字引文和对应行范围，不能证明其余结论或改写正确。
 
 质量未通过时，保存的笔记开头会保留提示、失败分块及最多 5 项问题；默认 Obsidian 和 generic 模板中的完成状态会在可安全识别时改为“待核验”。完整问题列表仍在 `qualityIssues` 中。
 
 这些检查有边界：
 
-- **`qualityPassed` 不是事实正确性的证明。**覆盖和原文真实性判断仍依赖核验代理实际读取与判断；重要结论、数字和引用请自行复核。
+- **`qualityPassed` 不是事实正确性的证明。**语义覆盖与论证判断仍依赖代理；来源为 `unknown` 时检查通过也不证明获取完整。重要结论、数字和引用请自行复核。
 - **取得全文不等于理解了全文。**复杂表格、公式、图片以及提取错误可能影响结果；来源不完整或分块失败时，结果会报告缺口。
 - **字幕或转写不等于音频原文。**自动字幕和语音识别可能漏句、听错数字或否定词；核验笔记与逐字稿不能证明逐字稿本身准确。
 - **视频时间戳不能凭空推算。**可定位性取决于取得的字幕或转写是否包含时间信息。
@@ -157,6 +161,8 @@ npm run validate
 ```
 
 项目使用解析器处理不同输入类型，支持自定义解析器。代码和测试见[仓库](https://github.com/PensiveFei/deep-read-summarize)，版本变化见 [CHANGELOG](https://github.com/PensiveFei/deep-read-summarize/blob/main/CHANGELOG.md)，贡献方式见 [CONTRIBUTING](https://github.com/PensiveFei/deep-read-summarize/blob/main/CONTRIBUTING.md)。
+
+[精读质量基准](benchmarks/quality/README.md)提供 16 个公开可用的短样本、逐条参考事实和离线计分工具；语义质量需要人工复核，不能把未评审的结果视为得分。
 
 **兼容性：**本项目此前验证过 DSH `0.2.0-rc.2` 的相关宿主契约；DSH 接口可能变化，其他版本请以实际测试和兼容说明为准。
 

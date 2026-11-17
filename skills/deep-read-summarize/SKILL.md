@@ -25,7 +25,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 用户提供：内容链接或本地文件路径。
 可选参数：`type`（auto/book/paper/video/web）、`options`（lengthMode / minWords / fastMode / maxChunks / readConcurrency / parallelQuality / readCache / readCacheIdentity / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / cpuThreads / transcriptCache / outputDir / tempDir / frontmatter）。
 
-优先调用插件提供的 `deep_read_summarize` 工具，参数为 `{ input, type, options }`。如果当前宿主没有这个工具，按技能末尾提供的 meta / script / args 调用 `workflow` 工具。两种入口执行相同的获取、精读与质量核验。
+优先调用插件提供的 `deep_read_summarize` 工具，参数为 `{ input, type, options }`。如果当前宿主没有这个工具，按技能末尾提供的 meta / script / args 调用 `workflow` 工具；裸 workflow 无法在宿主侧读取文件做程序化引文核验，须如实报告未核验。
 
 如果用户明确要求“简洁笔记”或“简短精读”，可使用 `options: { "lengthMode": "concise" }`。它默认使用 `minWords: 500` 和 `fastMode: true`，并要求成稿避免无依据的扩写；原文和引文核验仍会执行。用户明确给出的设置优先：单独传入 `minWords` 可覆盖最低篇幅，要保留第 5–7 节则传入 `fastMode: false`。选择模式时不要照抄下方默认示例中的 `minWords: 2500` 或 `fastMode: false`，除非用户明确要求。`minWords` 是最低计数而不是字数上限，不能承诺输出恰好或不超过某个字数。
 
@@ -44,15 +44,15 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 4. **波次1 获取+分块**：解析器获取全文 → 写入本次独立的临时子目录 → 生成分块计划（JSON Schema 校验）。`tempDir` 是根目录，不要复用其他 `run-*` 任务的 input/audio/transcript；规范化全部区间，优先用已保存文本的字符数均衡工作量（兼顾相近的段落边界）；统计缺失或无效时按行数均衡，始终保持从第 1 行到 totalLines 的完整覆盖，不得截断原文
 5. **波次2 并行精读**：每个分块一个子代理深度精读（Map），最多 `readConcurrency` 个槽位同时工作（默认 3，可按宿主能力调整），空闲即领取下一块，输出保持分块顺序
 6. **波次3 合并成稿**：整合为完整笔记（Reduce），内嵌质量自检
-7. **质量校验**：程序检查 frontmatter 模板、必要章节和篇幅；核验代理必须读取本次原文，逐块提供摘录、对第 4 节逐字引用提供原句与行号。`parallelQuality: true` 时多分块由独立代理并行核验各块及全部显式引文，另由代理检查全局术语与语言一致性；默认沿用原核验路径，`readConcurrency` 同时限制并行核验并发。不得只看笔记或仅返回 pass。`qualityEvidence` 可供回查；核验失败必须如实报告。`maxRetries` 为 0–3，修订失败、空结果或结构退化时保留上一份有效成稿。缺总行数、精读失败、仅简介或未知视频来源等问题不能靠改写笔记消除，不进行徒劳全文修订
+7. **质量校验**：程序检查 frontmatter 模板、必要章节和篇幅；核验代理必须读取本次原文，逐块提供摘录、对第 4 节逐字引用提供原句与行号。插件工具入口随后在宿主侧核查已获取原文的行数和逐字引文；裸 workflow 没有这一步。`parallelQuality: true` 时多分块由独立代理并行核验，`readConcurrency` 同时限制并发。不得只看笔记或仅返回 pass。`maxRetries` 为 0–3，修订失败、空结果或结构退化时保留上一份有效成稿。缺总行数、精读失败或已知来源不完整时不做徒劳的全文修订
 8. **落盘（必须，别跳过）**：精读工具只返回 `note`（笔记正文）与 `filePath`（建议路径）——**脚本本身没有文件系统权限**。拿到结果后要用 `write` 工具把 `note` 原样写入 `filePath`（目录不存在就先创建）；不写就等于笔记丢了，用户只会看到一段返回文本
-9. **如实交代结果**：`ok: false` 要说明卡在哪一步（`stage`）和原因，别拿半成品冒充成品；`qualityPassed: false`、`qualityIssues` 非空、或 `failedChunks > 0`（有块精读失败、笔记存在缺口）时，必须在回复里点出来。若 `draftContext` 中 `before` 或 `after` 非空，向用户说明其中保留的成稿额外文字；这些文字未通过原文核验，不要把它当成已核验的笔记内容
+9. **如实交代结果**：`ok: false` 要说明阶段与原因；`qualityPassed: false`、`qualityIssues` 非空或 `failedChunks > 0` 时必须说明。`sourceStatus: unknown` 表示来源完整性未确认，即使其他检查通过也不能宣称获得全文；`partial` 表示已知有缺口。`citationVerification.status` 为 `unverified` 或 `mismatch` 时必须说明并建议复核。若 `draftContext` 中有额外文字，说明它未经过原文核验
 
 跨次精读缓存默认关闭，仅插件工具入口支持；启用 `readCache` 时必须填写 `readCacheIdentity`（供应商、固定模型版本及输出相关设置）。身份由调用者保证，变更时必须更换；缓存明文保存在 `tempDir/.read-cache-v1`，可能包含原文摘录，命中后仍独立核验原文。
 
 ## 输出
 
-精读工具返回 `{ ok, filePath, note, lengthMode, minWords, fastMode, qualityPassed, qualityIssues, qualityChecks, qualityEvidence, failedChunks, coverageComplete, sourceComplete, textSource, timings, readTimings }`；可选 `draftContext` 记录成稿或修订稿的提取方式（`stage`、`kind`）及笔记前后额外文字（`before`、`after`），`kind` 为 `fenced` 或 `preamble`。质量未通过时，`note` 开头保留提示和最多 5 项问题；obsidian/generic 模板中可安全识别的 `status: 已完成` 会改为 `status: 待核验`。其余问题仍在 `qualityIssues` 中。`coverageComplete: false` 表示缺少有效总行数，无法确认尾部覆盖；`sourceComplete: false` 表示视频仅有简介或来源未确认，笔记会保留来源限制且质量降级。来源完整性仍依据获取代理声明，不能当作视频真实内容已全部证明。`timings` 提供 detect/fetch/read/draft/quality/total 毫秒耗时；`readTimings` 提供精读块的行号、毫秒耗时、成功状态及缓存命中状态，不能由此推测未提供的 token 用量。
+精读工具返回 `{ ok, filePath, note, lengthMode, minWords, fastMode, qualityPassed, qualityIssues, qualityChecks, qualityEvidence, citationVerification, failedChunks, coverageComplete, sourceStatus, sourceComplete, textSource, timings, readTimings }`。`sourceStatus` 是 `complete`（取得文本与用户提供的本地纯文本逐字节一致）、`partial`（已知不完整）或 `unknown`（完整性未确认）；视频逐字稿无法证明覆盖完整音频。兼容字段 `sourceComplete` 仅在 `complete` 为 true，false 同时包括 partial 和 unknown。`citationVerification.status` 是 `verified`、`mismatch`、`unverified` 或 `not_applicable`；程序核验仅覆盖第 4 节识别出的逐字引文，不证明语义或其他结论正确。裸 workflow 入口无法进行宿主侧验证，需核验引文时质量不通过。`coverageComplete: false` 表示行数未知或与实际文件不一致。`draftContext` 中的额外文字不属于核验正文。时间字段以毫秒计，不能推测 token 用量。
 
 > ⚠️ **`note` 就是完整笔记正文，`filePath` 只是建议路径**：脚本运行在无文件系统的沙箱里（DSH 的 workflow 契约：脚本只负责协调子代理），**它不会替你写文件**。必须由你（主代理）在拿到结果后用 `write` 工具把它写到 `filePath`——默认 `./output/`，可用 `options.outputDir` 指向 Obsidian 仓库或静态站点的内容目录。
 
@@ -80,7 +80,7 @@ status: 已完成
 ## 视频说明
 
 - **统一流水线（去三档）**：目标 = 拿到完整逐字稿再精读。
-  1. **有平台字幕**（B站 AI 字幕 / YouTube CC / yt-dlp CC）→ 直接用字幕（=全文，最快、零依赖）。
+  1. **有平台字幕**（B站 AI 字幕 / YouTube CC / yt-dlp CC）→ 优先使用字幕；字幕是否覆盖音频仍未确认。
   2. **无公开字幕** → 用插件自带转写（`scripts/transcribe.js`：faster-whisper small / int8 / VAD）得到全文。
   3. 都不行 → 降级提示用户手动提供转写文本，或退回 desc 作背景；**绝不阻塞、绝不自动装重依赖**。
 - `options.transcribe`：**默认 true**（无字幕自动转写）；设为 `false` 则跳过转写（只用字幕/desc 或降级）。

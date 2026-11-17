@@ -89,13 +89,17 @@ When an identifiable note is extracted from a wrapper, the optional `draftContex
 
 ## Quality and limitations
 
-The workflow normalizes chunk ranges and checks coverage of known source line numbers. After drafting, code checks format and length, and an independent review agent reads the obtained text to check chunk coverage and key quotations. Results are available through `qualityPassed`, `qualityChecks`, and `qualityEvidence`.
+The workflow normalizes chunk ranges, checks format and length, and has an independent review agent provide source and quotation evidence. The plugin tool also reads the acquired file in the host and checks its actual line count and the verbatim quotations extracted from section 4. An unreadable or changed source, or a quotation that does not match its line range, cannot pass verification. Results include `qualityPassed`, `qualityChecks`, `qualityEvidence`, and `citationVerification`.
+
+`sourceStatus` is `complete` only when the acquired text exactly matches the user's local plain-text input; `partial` means a known incomplete source, and `unknown` means completeness cannot be established, including web pages, extracted PDFs, subtitles, and transcripts. The compatibility boolean `sourceComplete` is `true` only for `complete`; `false` covers both other states. The source status is retained in the note. Other checks may pass when the status is `unknown`, but that does not prove the original source was fully obtained.
+
+`citationVerification.status` is `verified`, `mismatch`, `unverified`, or `not_applicable`. The legacy raw workflow entry cannot read files in the host; when citations require checking it reports `unverified` and fails quality. The literal check covers only quotations extracted from section 4 and their stated line ranges, not the correctness of other claims or paraphrases.
 
 When quality checks fail, the saved note includes a notice, failed chunks, and up to five issues. The completion status in the default Obsidian and generic templates is changed to “pending review” when it can be identified safely. The complete issue list remains in `qualityIssues`.
 
 These checks have limits:
 
-- **`qualityPassed` does not prove factual accuracy.** Coverage and source authenticity still depend on the reviewing agent reading and evaluating the source. Check important claims, numbers, and quotations yourself.
+- **`qualityPassed` does not prove factual accuracy.** Semantic coverage and reasoning still depend on the review agent; a pass with `sourceStatus: unknown` does not prove acquisition completeness. Check important claims, numbers, and quotations yourself.
 - **Retrieving the full text does not guarantee understanding it.** Complex tables, formulas, images, or extraction errors can affect the result; incomplete sources or failed chunks are reported as gaps.
 - **Captions and transcripts can differ from audio.** Automatic captions and speech recognition can omit words or mishear numbers and negations; checking the note against a transcript does not prove the transcript is accurate.
 - **Video timestamps cannot be inferred reliably.** Locations depend on whether the obtained subtitles or transcript contain time information.
@@ -157,6 +161,8 @@ npm run validate
 ```
 
 The project uses parsers for different input types and supports custom parsers. See the [repository](https://github.com/PensiveFei/deep-read-summarize), [CHANGELOG](https://github.com/PensiveFei/deep-read-summarize/blob/main/CHANGELOG.md), and [CONTRIBUTING](https://github.com/PensiveFei/deep-read-summarize/blob/main/CONTRIBUTING.md).
+
+The [reading-quality benchmark](benchmarks/quality/README.md) provides 16 short public-use cases, annotated reference points, and an offline scorer. Semantic quality requires human review; unreviewed results are not scores.
 
 The relevant host contracts were previously verified with DSH `0.2.0-rc.2`. DSH interfaces can change; verify other versions against the actual host and compatibility information.
 

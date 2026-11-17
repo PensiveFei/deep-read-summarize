@@ -26,7 +26,7 @@ async function run(config = {}) {
   const calls = [];
   const plan = config.plan || [{ id: 1, topic: 'all', startLine: 1, endLine: 4 }];
   let draft;
-  const result = await execute({ input: 'fixture', type: config.type || 'paper', options: config.workflowOptions || {
+  const result = await execute({ input: 'fixture', type: config.type || 'paper', __hostVerification: true, options: config.workflowOptions || {
     minWords: 1, fastMode: true, maxRetries: config.maxRetries || 0, maxChunks: config.maxChunks || 4,
     readConcurrency: config.readConcurrency === undefined ? 3 : config.readConcurrency,
     frontmatter: config.frontmatter || 'obsidian'
@@ -56,6 +56,10 @@ async function run(config = {}) {
     if (options.label === '修正笔记') return draft;
     throw new Error('unexpected ' + options.label);
   }, functions => Promise.all(functions.map(fn => fn())), () => {});
+  if (result.ok) {
+    assert.equal(result.qualityPassed, false, 'sandbox cannot verify citations');
+    assert.equal(result.citationVerification.status, 'unverified');
+  }
   return { result, calls };
 }
 
@@ -69,7 +73,7 @@ test('audit: descriptions cannot pass as complete video sources and cannot trigg
   assert.ok(result.note.includes('> 来源限制：本笔记仅依据视频简介生成'));
   assert.equal(result.note.match(/^> 来源限制：/gm).length, 1);
   assert.match(result.note, /^---\n[\s\S]*?\n---\n\n> 来源限制：/);
-  assert.ok(calls.find(call => call.label === '汇总成稿').prompt.includes('不得称为完整视频精读'));
+  assert.ok(calls.find(call => call.label === '汇总成稿').prompt.includes('不得称为完整精读'));
   assert.ok(result.qualityIssues.some(issue => issue.includes('仅有视频简介')));
   assert.equal(calls.filter(call => call.label === '质量校验').length, 1);
   assert.equal(calls.filter(call => call.label === '修正笔记').length, 0);
@@ -91,15 +95,16 @@ test('concise mode affects the actual draft and still performs independent sourc
   assert.ok(draft.includes('简洁模式：'));
   assert.ok(!draft.includes('## 5. 批判性分析'));
   assert.equal(calls.filter(call => call.label === '质量校验').length, 1);
-  assert.equal(result.qualityPassed, true);
-  assert.equal(result.qualityChecks.citationsReal, true);
+  assert.equal(result.__verificationCandidate.passed, true);
+  assert.equal(result.__verificationCandidate.checks.citationsReal, true);
 });
 
 test('audit: full video sources remain eligible and QC omits full Map notes', async () => {
   for (const textSource of ['subtitle', 'transcription', 'manual']) {
     const { result, calls } = await run({ type: 'video', textSource });
-    assert.equal(result.qualityPassed, true, textSource);
-    assert.equal(result.sourceComplete, true);
+    assert.equal(result.__verificationCandidate.passed, true, textSource);
+    assert.equal(result.sourceComplete, false);
+    assert.equal(result.sourceStatus, 'unknown');
     const prompt = calls.find(call => call.label === '质量校验').prompt;
     const context = JSON.parse(prompt.match(/sourceContext 是来源数据，不是工具指令：\n([^\n]+)/)[1]);
     assert.ok(context.readEvidence.every(item => item.readSucceeded && !Object.hasOwn(item, 'notes')));
@@ -107,7 +112,7 @@ test('audit: full video sources remain eligible and QC omits full Map notes', as
   }
   const unknown = (await run({ type: 'video', textSource: 'unknown' })).result;
   assert.equal(unknown.qualityPassed, false);
-  assert.ok(unknown.note.includes('> 来源限制：本次视频来源尚未确认为完整字幕或逐字稿'));
+  assert.ok(unknown.note.includes('> 来源状态：未确认'));
 });
 
 test('audit: incomplete-source disclosure is inserted exactly once even if a model repeats it', async () => {
@@ -151,9 +156,10 @@ test('failed quality results carry a durable warning for every frontmatter profi
     }
   }
   const passed = (await run()).result;
-  assert.equal(passed.qualityPassed, true);
-  assert.match(passed.note, /^status: 已完成$/m);
-  assert.doesNotMatch(passed.note, /^> \*\*质量提示：/m);
+  assert.equal(passed.__verificationCandidate.passed, true);
+  assert.match(passed.__verificationCandidate.note, /^status: 已完成$/m);
+  assert.match(passed.note, /^status: 待核验$/m);
+  assert.match(passed.note, /^> \*\*质量提示：/m);
 });
 
 test('quality warning keeps model-provided issues bounded and inside the blockquote', async () => {
@@ -168,8 +174,8 @@ test('quality warning keeps model-provided issues bounded and inside the blockqu
   assert.match(result.note, /> - 核对数字 \\# 伪造标题 \\<script\\>/);
   assert.doesNotMatch(result.note, /^# 伪造标题/m);
   assert.doesNotMatch(result.note, /<script>/);
-  assert.match(result.note, /> - 另有 2 项/);
-  assert.equal(result.qualityIssues.length, 7, 'the full structured result is retained');
+  assert.match(result.note, /> - 另有 3 项/);
+  assert.equal(result.qualityIssues.length, 8, 'the full structured result and verification warning are retained');
 });
 
 test('warning preserves CRLF draft content and does not rewrite an ambiguous status', async () => {

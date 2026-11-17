@@ -30,7 +30,8 @@ const fetchResultSchema = {
         title: { type: "string" },
         author: { type: "string" },
         year: { type: "string" },
-        language: { type: "string", enum: ["zh", "en", "other", ""] }
+        language: { type: "string", enum: ["zh", "en", "other", ""] },
+        sourceStatus: { type: "string", enum: ["partial", "unknown"] }
       },
       required: [],
       additionalProperties: true

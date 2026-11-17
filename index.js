@@ -22,6 +22,8 @@ const parsers = require('./parsers');
 const schemas = require('./schemas');
 const { DEFAULT_OPTIONS, normalizeWorkflowOptions } = require('./lib/options');
 const readCache = require('./lib/read-cache');
+const sourceProof = require('./lib/source-proof');
+const quality = require('./lib/quality');
 
 module.exports.name = 'deep-read-summarize';
 module.exports.inject = ['skills'];
@@ -141,29 +143,88 @@ function readingTool(engine, defaults, registry) {
           return result.value;
         } finally { await run.dispose(); }
       }
-      if (!options.readCache) return runWorkflow(startArgs);
       const started = Date.now();
-      const prepared = await runWorkflow(Object.assign({}, startArgs, { __cachePrepare: true }));
-      if (!prepared.__cachePrepared) return prepared;
-      if (!Array.isArray(prepared.chunkPrompts) || !Array.isArray(prepared.chunkPlan) || prepared.chunkPrompts.length !== prepared.chunkPlan.length || prepared.chunkPrompts.length > 12 || typeof prepared.tempFile !== 'string' || typeof prepared.tempDir !== 'string' || typeof prepared.selectedType !== 'string' || !prepared.fetched || typeof prepared.fetched !== 'object') throw new Error('deep_read_summarize returned invalid cache preparation');
-      const digest = readCache.sourceHash(options.tempDir, prepared.tempDir, prepared.tempFile);
-      const keys = prepared.chunkPrompts.map(function (prompt) { return readCache.keyFor(digest, options.readCacheIdentity, prompt, prepared.tempFile); });
-      const hits = keys.map(function (key) { return key ? readCache.read(options.tempDir, key) : null; });
-      const resume = { tempDir: prepared.tempDir, selectedType: prepared.selectedType, fetched: prepared.fetched, prompts: prepared.chunkPrompts, hits: hits };
-      if (exec.signal && exec.signal.aborted) throw new Error('deep_read_summarize was cancelled before cache resume');
-      const result = await runWorkflow(Object.assign({}, startArgs, { __cacheResume: resume }));
-      // Never use notes matched against a source that changed during the run.
-      if (digest && readCache.sourceHash(options.tempDir, prepared.tempDir, prepared.tempFile) !== digest) return runWorkflow(startArgs);
-      if (!(exec.signal && exec.signal.aborted) && digest && result.qualityPassed && Array.isArray(result.__cacheReads)) {
-        for (let i = 0; i < keys.length; i++) if (keys[i] && !hits[i] && readCache.portable(result.__cacheReads[i], prepared.tempDir)) readCache.write(options.tempDir, keys[i], result.__cacheReads[i]);
+      // Acquire first, then snapshot the actual file in the host. The second
+      // workflow sees the same acquisition but cannot forge the host snapshot.
+      async function runChecked(useCache, canRetry) {
+        const localBefore = sourceProof.readLocalInput(args.input.trim());
+        const prepared = await runWorkflow(Object.assign({}, startArgs, { __cachePrepare: true }));
+        if (!prepared.__cachePrepared) {
+          if (prepared.ok === true) {
+            prepared.qualityPassed = false;
+            prepared.sourceStatus = 'unknown';
+            prepared.sourceComplete = false;
+            prepared.coverageComplete = false;
+            prepared.qualityChecks = Object.assign({}, prepared.qualityChecks, { coverage: false, citationsReal: false });
+            prepared.citationVerification = { status: 'unverified', checked: 0, reason: 'preparation_unavailable' };
+            prepared.qualityIssues = (Array.isArray(prepared.qualityIssues) ? prepared.qualityIssues : []).concat('无法准备原文核验，请人工复核');
+            if (typeof prepared.note === 'string') prepared.note = quality.decorateNote(prepared.note, { sourceStatus: 'unknown', passed: false, issues: prepared.qualityIssues, fmProfile: options.frontmatter });
+          }
+          return prepared;
+        }
+        if (!Array.isArray(prepared.chunkPrompts) || !Array.isArray(prepared.chunkPlan) || prepared.chunkPrompts.length !== prepared.chunkPlan.length || prepared.chunkPrompts.length > 12 || typeof prepared.tempFile !== 'string' || typeof prepared.tempDir !== 'string' || typeof prepared.selectedType !== 'string' || !prepared.fetched || typeof prepared.fetched !== 'object') throw new Error('deep_read_summarize returned invalid source preparation');
+        const before = sourceProof.readRunSource(options.tempDir, prepared.tempDir, prepared.tempFile);
+        const keys = prepared.chunkPrompts.map(function (prompt) { return useCache && before ? readCache.keyFor(before.digest, options.readCacheIdentity, prompt, prepared.tempFile) : null; });
+        const hits = keys.map(function (key) { return key ? readCache.read(options.tempDir, key) : null; });
+        const resume = { tempDir: prepared.tempDir, selectedType: prepared.selectedType, fetched: prepared.fetched, prompts: prepared.chunkPrompts, hits: hits };
+        if (exec.signal && exec.signal.aborted) throw new Error('deep_read_summarize was cancelled before source verification');
+        const result = await runWorkflow(Object.assign({}, startArgs, { __cacheResume: resume, __hostVerification: true }));
+        const after = sourceProof.readRunSource(options.tempDir, prepared.tempDir, prepared.tempFile);
+        const stable = !!before && !!after && before.digest === after.digest;
+        // Preserve the previous cache behavior: retry once without cached reads
+        // when the acquired source changes. Never silently trust a changed file.
+        if (useCache && canRetry && before && after && !stable) return runChecked(false, false);
+        const candidate = result.__verificationCandidate;
+        if (result.ok === true && candidate && typeof candidate.note === 'string' && Array.isArray(candidate.issues) && candidate.checks && candidate.evidence) {
+          const localAfter = sourceProof.readLocalInput(args.input.trim());
+          const sourceStatus = candidate.sourceStatus === 'partial' ? 'partial' :
+            prepared.selectedType !== 'video' && stable && localBefore && localAfter && localBefore.digest === localAfter.digest && localBefore.digest === before.digest ? 'complete' : 'unknown';
+          const issues = candidate.issues.slice();
+          const checks = Object.assign({}, candidate.checks);
+          const lineCountMatches = stable && Number.isInteger(candidate.evidence.totalLines) && candidate.evidence.totalLines === before.lines.length;
+          if (!lineCountMatches) {
+            checks.coverage = false;
+            issues.push(stable ? '获取报告的总行数与实际原文不一致，无法确认全部分块覆盖' : '无法稳定读取本次原文，无法确认分块覆盖与引用');
+          }
+          const citationVerification = sourceProof.verifyCitations(stable ? before : null, candidate);
+          const citationsVerified = citationVerification.status === 'verified' || citationVerification.status === 'not_applicable';
+          if (!citationsVerified) {
+            checks.citationsReal = false;
+            issues.push(citationVerification.status === 'mismatch' ? '引文或原文摘录未出现在标注的原文行范围内' : '程序未能读取或完整核验原文引用，请人工复核');
+          }
+          const passed = candidate.passed === true && lineCountMatches && citationsVerified;
+          result.sourceStatus = sourceStatus;
+          result.sourceComplete = sourceStatus === 'complete';
+          result.coverageComplete = !!result.coverageComplete && lineCountMatches;
+          result.citationVerification = citationVerification;
+          result.qualityPassed = passed;
+          result.qualityIssues = Array.from(new Set(issues));
+          result.qualityChecks = checks;
+          result.note = quality.decorateNote(candidate.note, { sourceStatus, textSource: candidate.textSource, passed,
+            failedChunkIds: candidate.failedChunkIds, issues: result.qualityIssues, fmProfile: candidate.fmProfile });
+        } else if (result.ok === true) {
+          result.qualityPassed = false;
+          result.sourceStatus = 'unknown';
+          result.sourceComplete = false;
+          result.coverageComplete = false;
+          result.qualityChecks = Object.assign({}, result.qualityChecks, { coverage: false, citationsReal: false });
+          result.citationVerification = { status: 'unverified', checked: 0, reason: 'invalid_candidate' };
+          result.qualityIssues = (Array.isArray(result.qualityIssues) ? result.qualityIssues : []).concat('原文核验结果不可用，请人工复核');
+          if (typeof result.note === 'string') result.note = quality.decorateNote(result.note, { sourceStatus: 'unknown', passed: false, issues: result.qualityIssues, fmProfile: options.frontmatter });
+        }
+        if (useCache && !(exec.signal && exec.signal.aborted) && stable && result.qualityPassed && Array.isArray(result.__cacheReads)) {
+          for (let i = 0; i < keys.length; i++) if (keys[i] && !hits[i] && readCache.portable(result.__cacheReads[i], prepared.tempDir)) readCache.write(options.tempDir, keys[i], result.__cacheReads[i]);
+        }
+        delete result.__verificationCandidate;
+        delete result.__cacheReads;
+        if (result.timings && prepared.timings) {
+          result.timings.detect += prepared.timings.detect || 0;
+          result.timings.fetch += prepared.timings.fetch || 0;
+          result.timings.total = Date.now() - started;
+        }
+        return result;
       }
-      delete result.__cacheReads;
-      if (result.timings && prepared.timings) {
-        result.timings.detect += prepared.timings.detect || 0;
-        result.timings.fetch += prepared.timings.fetch || 0;
-        result.timings.total = Date.now() - started;
-      }
-      return result;
+      return runChecked(options.readCache, true);
     }
   };
 }

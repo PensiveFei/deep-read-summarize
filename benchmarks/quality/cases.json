@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "corpus": "deep-read-quality-v1",
+  "cases": [
+    {
+      "id": "paper-s01", "type": "paper", "origin": "synthetic", "title": "分段阅读实验",
+      "source": ["一项模拟研究招募了60名志愿者，随机分为两组，每组30人。", "实验持续8周，两组每周都阅读150分钟；甲组分三次，乙组分五次。", "研究者在结束时比较理解测验，未发现两组成绩有显著差异。", "作者指出样本较小，结果不能证明两种方法对所有人完全等效。"],
+      "facts": [{"id":"sample","text":"60人，随机两组，每组30人","lines":[1]}, {"id":"dose","text":"8周，两组均每周阅读150分钟","lines":[2]}, {"id":"result","text":"理解成绩未发现显著差异，不等于证明完全等效","lines":[3,4]}],
+      "quotes": [{"text":"未发现两组成绩有显著差异","line":3}]
+    },
+    {
+      "id": "paper-s02", "type": "paper", "origin": "synthetic", "title": "传感器分类实验",
+      "source": ["研究团队用120个传感器记录了30天的室内温度。", "新分类器的F1为0.84，比较方法的F1为0.76；两者使用同一测试集。", "实验没有测量能耗，因此不能根据这项研究判断哪种方法更省电。", "测试场景只包括办公室，作者建议在住宅环境中继续验证。"],
+      "facts": [{"id":"data","text":"120个传感器、30天","lines":[1]}, {"id":"score","text":"同一测试集上F1分别为0.84和0.76","lines":[2]}, {"id":"limit","text":"未测能耗，不能得出省电结论","lines":[3]}],
+      "quotes": [{"text":"实验没有测量能耗","line":3}]
+    },
+    {
+      "id": "paper-s03", "type": "paper", "origin": "synthetic", "title": "城市树荫观察",
+      "source": ["一项模拟观察在两座城市的240个地点记录夏季温度。", "有树荫地点的平均地表温度比无遮挡地点低3摄氏度。", "这些地点没有随机分配，研究没有证明树荫导致了全部温差。", "作者建议后续同时测量材料、风速和日照时间。"],
+      "facts": [{"id":"scope","text":"两座城市、240个地点","lines":[1]}, {"id":"difference","text":"树荫地点平均地表温度低3摄氏度","lines":[2]}, {"id":"causality","text":"观察研究没有证明全部温差由树荫导致","lines":[3]}],
+      "quotes": [{"text":"研究没有证明树荫导致了全部温差","line":3}]
+    },
+    {
+      "id": "web-s01", "type": "web", "origin": "synthetic", "title": "图书馆开放说明",
+      "source": ["青山图书馆开放时间为周二至周日9:00—17:00。", "周一闭馆，法定节假日也不例外。", "入馆免费，但参加每月一次的讲座需要提前预约。", "借书证有效期为一年；过期后可在前台免费续期。"],
+      "facts": [{"id":"hours","text":"周二至周日9:00—17:00","lines":[1]}, {"id":"monday","text":"周一闭馆，法定节假日也不例外","lines":[2]}, {"id":"booking","text":"入馆免费，讲座需预约","lines":[3]}],
+      "quotes": [{"text":"周一闭馆，法定节假日也不例外","line":2}]
+    },
+    {
+      "id": "web-s02", "type": "web", "origin": "synthetic", "title": "缓存配置指南",
+      "source": ["示例服务默认缓存24小时，最多保留500条记录。", "缓存保存在本机，默认不会发送到远程服务器。", "管理员可将缓存时长改为1到72小时；设置为0会被拒绝。", "清理缓存不会删除原始文档，但会使下次处理重新计算。"],
+      "facts": [{"id":"limits","text":"默认24小时，最多500条","lines":[1]}, {"id":"privacy","text":"缓存默认不上传远程服务器","lines":[2]}, {"id":"clear","text":"清缓存不删除原文，下次需重新计算","lines":[4]}],
+      "quotes": [{"text":"清理缓存不会删除原始文档","line":4}]
+    },
+    {
+      "id": "web-s03", "type": "web", "origin": "synthetic", "title": "River notice",
+      "source": ["A practice alert is issued when rainfall reaches 10 millimetres per hour.", "The alert is informational and does not order an evacuation.", "Residents can check updates every 30 minutes on the local notice board.", "The exercise covers the north bank only, not the entire city."],
+      "facts": [{"id":"threshold","text":"10 millimetres per hour triggers a practice alert","lines":[1]}, {"id":"evacuation","text":"the notice does not order evacuation","lines":[2]}, {"id":"scope","text":"the exercise covers the north bank only","lines":[4]}],
+      "quotes": [{"text":"does not order an evacuation","line":2}]
+    },
+    {
+      "id": "book-s01", "type": "book", "origin": "synthetic", "title": "山路上的地图",
+      "source": ["阿宁用了五天整理祖父留下的地图。", "她发现三条通往山谷的小路，其中两条在冬季封闭。", "地图没有记载宝藏，祖父也从未说过山谷里埋有金子。", "最后，她把标注后的地图交给村里的学校。"],
+      "facts": [{"id":"duration","text":"阿宁整理地图用了五天","lines":[1]}, {"id":"paths","text":"三条路中两条冬季封闭","lines":[2]}, {"id":"treasure","text":"地图没有记载宝藏","lines":[3]}],
+      "quotes": [{"text":"地图没有记载宝藏","line":3}]
+    },
+    {
+      "id": "book-s02", "type": "book", "origin": "synthetic", "title": "种子的第一课",
+      "source": ["一枚豆种子在适宜温度和足够水分下开始萌发。", "实验中有两组各20粒种子，一组置于暗处，另一组接受光照。", "两组均有18粒发芽；这次观察不说明所有植物的种子都不需要光。", "小林记录了每天的温度，但没有称量幼苗。"],
+      "facts": [{"id":"groups","text":"两组各20粒，分别置于暗处和光照下","lines":[2]}, {"id":"germination","text":"两组各有18粒发芽","lines":[3]}, {"id":"limit","text":"不能推广到所有植物的种子","lines":[3]}],
+      "quotes": [{"text":"两组均有18粒发芽","line":3}]
+    },
+    {
+      "id": "book-s03", "type": "book", "origin": "synthetic", "title": "The clockmaker's note",
+      "source": ["Mira repaired three clocks before noon and left the fourth untouched.", "The fourth clock belonged to her neighbour, who had not yet given permission.", "She wrote down the time each repair took: 20, 25, and 30 minutes.", "The note did not say that any of the clocks had been sold."],
+      "facts": [{"id":"count","text":"three clocks repaired; fourth untouched","lines":[1]}, {"id":"permission","text":"neighbour had not yet given permission","lines":[2]}, {"id":"sale","text":"the note did not say any clock was sold","lines":[4]}],
+      "quotes": [{"text":"had not yet given permission","line":2}]
+    },
+    {
+      "id": "video-s01", "type": "video", "origin": "synthetic", "title": "番茄烹饪演示字幕",
+      "source": ["[00:00:00] 今天演示番茄汤，用两颗番茄和一升水。", "[00:00:12] 把番茄切块后煮十五分钟。", "[00:00:28] 这次没有加糖；盐的用量可以按口味调整。", "[00:00:40] 主讲人提醒，计时从水开始沸腾后算起。"],
+      "facts": [{"id":"ingredients","text":"两颗番茄和一升水","lines":[1]}, {"id":"time","text":"沸腾后煮十五分钟","lines":[2,4]}, {"id":"sugar","text":"没有加糖","lines":[3]}],
+      "quotes": [{"text":"这次没有加糖","line":3}]
+    },
+    {
+      "id": "video-s02", "type": "video", "origin": "synthetic", "title": "水质观测讲座字幕",
+      "source": ["[00:00:00] 实验室比较了三处采样点的水温。", "[00:00:08] 上午记录分别为18、19和20摄氏度。", "[00:00:18] 这只是一次观测，不足以推断全年变化。", "[00:00:30] 演示没有检测水中的微生物，请勿据此判断饮用安全。"],
+      "facts": [{"id":"samples","text":"三处采样点","lines":[1]}, {"id":"values","text":"上午水温18、19、20摄氏度","lines":[2]}, {"id":"safety","text":"未检测微生物，不能判断饮用安全","lines":[4]}],
+      "quotes": [{"text":"演示没有检测水中的微生物","line":4}]
+    },
+    {
+      "id": "video-s03", "type": "video", "origin": "synthetic", "title": "Workshop transcript",
+      "source": ["[00:00:00] The workshop has two sessions of 25 minutes each.", "[00:00:12] There is a ten-minute break between the sessions.", "[00:00:20] The recording includes the presentation, but not the private discussion afterward.", "[00:00:31] The host will publish the slides on Friday."],
+      "facts": [{"id":"sessions","text":"two 25-minute sessions","lines":[1]}, {"id":"break","text":"a ten-minute break","lines":[2]}, {"id":"privacy","text":"the private discussion is not recorded","lines":[3]}],
+      "quotes": [{"text":"not the private discussion afterward","line":3}]
+    },
+    {
+      "id": "paper-r01", "type": "paper", "origin": "real-excerpt", "title": "Accumulated exercise trial",
+      "attribution": "Jiang, Zheng, Zhao et al., BMC Women's Health (2026), https://doi.org/10.1186/s12905-026-04665-y; CC BY 4.0, https://creativecommons.org/licenses/by/4.0/. Excerpt only; whitespace normalized and paragraph break added.",
+      "source": ["Sixty young women were randomized into two groups:", "the AE group (n = 30) and the MICE group (n = 30)."],
+      "facts": [{"id":"population","text":"60 young women randomly assigned to two groups","lines":[1]}, {"id":"groups","text":"AE and MICE groups each had 30 participants","lines":[2]}],
+      "quotes": [{"text":"Sixty young women were randomized into two groups","line":1}]
+    },
+    {
+      "id": "web-r01", "type": "web", "origin": "real-excerpt", "title": "NASA Earth Science FAQ",
+      "attribution": "NASA Science, Earth Science FAQ, https://science.nasa.gov/earth/faq/; NASA original material, source credited. Excerpt only; text between fragments omitted. See https://science.nasa.gov/earth/faq/ for reuse terms.",
+      "source": ["Most materials published under science.nasa.gov/earth, including images, are freely available for re-publication or re-use,", "except for where copyright is indicated."],
+      "facts": [{"id":"reuse","text":"most material is available for reuse","lines":[1]}, {"id":"exception","text":"material with indicated copyright is excepted","lines":[2]}],
+      "quotes": [{"text":"except for where copyright is indicated","line":2}]
+    },
+    {
+      "id": "book-r01", "type": "book", "origin": "real-excerpt", "title": "Pride and Prejudice, chapter 1",
+      "attribution": "Jane Austen, Pride and Prejudice (1813), chapter 1; public domain. Project Gutenberg eBook 1342, https://www.gutenberg.org/ebooks/1342. Excerpt only.",
+      "source": ["It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife."],
+      "facts": [{"id":"narrator","text":"the narrator presents a claim about a wealthy single man seeking a wife","lines":[1]}],
+      "quotes": [{"text":"a single man in possession of a good fortune","line":1}]
+    },
+    {
+      "id": "video-r01", "type": "video", "origin": "real-excerpt", "title": "NASA 2024 temperature video transcript",
+      "attribution": "NASA Scientific Visualization Studio, Global Temperature Update transcript, https://svs.gsfc.nasa.gov/vis/a010000/a014700/a014743/script_37902_01.html. NASA source credited; short transcript excerpt only.",
+      "source": ["Global temperatures in 2024 were around 1.28 degrees Celsius above the agency’s 20th century baseline (1951-1980)."],
+      "facts": [{"id":"year","text":"the value concerns 2024","lines":[1]}, {"id":"baseline","text":"about 1.28 °C above the 1951–1980 baseline","lines":[1]}],
+      "quotes": [{"text":"around 1.28 degrees Celsius","line":1}]
+    }
+  ]
+}

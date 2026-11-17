@@ -8,7 +8,7 @@ async function run(mode, useParallel = true) {
   let active = 0, max = 0, started = 0, legacy = 0, release;
   const auditedNotes = [];
   const gate = new Promise(resolve => { release = resolve; });
-  const result = await execute({ input: 'fixture', type: 'paper', options: { minWords: 1, fastMode: true, maxChunks: 4, readConcurrency: 4, ...(useParallel ? { parallelQuality: true } : {}) } }, () => {}, async (prompt, options) => {
+  const result = await execute({ input: 'fixture', type: 'paper', __hostVerification: true, options: { minWords: 1, fastMode: true, maxChunks: 4, readConcurrency: 4, ...(useParallel ? { parallelQuality: true } : {}) } }, () => {}, async (prompt, options) => {
     if (options.label === '获取+分块') return { saved: true, ...(mode === 'unknownCoverage' ? {} : { totalLines: 40 }), metadata: { title: 'T' }, chunkPlan: mode === 'single' ? [{ id: 1, topic: 'all', startLine: 1, endLine: 40 }] : plan };
     if (options.label === '精读块') return 'detail';
     if (options.label === '汇总成稿') {
@@ -46,22 +46,24 @@ async function run(mode, useParallel = true) {
     }
     throw new Error('unexpected ' + options.label);
   }, functions => Promise.all(functions.map(fn => fn())), () => {});
+  assert.equal(result.qualityPassed, false, 'sandbox cannot verify citations');
+  assert.equal(result.citationVerification.status, 'unverified');
   return { result, max, legacy, auditedNotes };
 }
 test('independent chunk auditors run concurrently and aggregate citations across chunks', { timeout: 3000 }, async () => {
   const { result, max } = await run('ok');
   assert.equal(max, 4);
-  assert.equal(result.qualityPassed, true);
+  assert.equal(result.__verificationCandidate.passed, true);
   assert.equal(result.qualityEvidence.chunkChecks.length, 4);
   assert.equal(result.qualityEvidence.citationChecks.length, 2);
 });
 test('parallel source auditors receive a normalized wrapped note', { timeout: 3000 }, async () => {
   const { result, auditedNotes } = await run('wrapped');
-  assert.equal(result.qualityPassed, true);
+  assert.equal(result.__verificationCandidate.passed, true);
   assert.ok(result.note.startsWith('---\n'));
   assert.equal(result.qualityEvidence.citationChecks.length, 2);
   assert.equal(auditedNotes.length, 5);
-  assert.ok(auditedNotes.every(note => note === result.note));
+  assert.ok(auditedNotes.every(note => note === result.__verificationCandidate.note));
   assert.deepEqual(result.draftContext, [{ stage: 'draft', kind: 'fenced', before: '整理如下。', after: '' }]);
 });
 test('parallel audit fails closed for missing, mismatched and unavailable evidence', { timeout: 3000 }, async () => {
@@ -78,7 +80,7 @@ test('fatal host errors propagate from parallel independent auditors', { timeout
 
 test('the default keeps the original independent auditor for multiple chunks', async () => {
   const { result, max, legacy } = await run('ok', false);
-  assert.equal(result.qualityPassed, true);
+  assert.equal(result.__verificationCandidate.passed, true);
   assert.equal(max, 0);
   assert.equal(legacy, 1);
 });

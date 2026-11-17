@@ -74,7 +74,7 @@ test('plugin entry reuses only validated notes and still performs independent qu
         }
         if (options.label === '精读块') { reads++; return '精读结果：原文引句。' + (noteWithPath ? sourceFile : ''); }
         if (options.label === '汇总成稿') return prompt.match(/模板：\n(---[\s\S]*?\n---)/)[1] + '\n# T\n\n## 1. 概述\n主题。\n\n## 2. 结构\n结构。\n\n## 3. 概念\n概念。\n\n## 4. 引用\n“原文引句”（第 1 行）';
-        if (options.label === '质量校验') { reviews++; if (mutate) { mutate = false; content = '发生变化的原文引句。\n另一行。'; fs.writeFileSync(sourceFile, content); } return { sourceChecked: qualityOk, coverage: true, citationsReal: true, terminologyConsistent: true, languageConsistent: true, chunkChecks: [{ chunkId: 1, startLine: 1, endLine: 2, sourceExcerpt: '这是原文引句。', covered: true }], citationChecks: [{ quote: '原文引句', sourceQuote: '这是原文引句。', chunkId: 1, startLine: 1, endLine: 1, location: '第 1 行', verified: true }], issues: [] }; }
+        if (options.label === '质量校验') { reviews++; if (mutate) { mutate = false; content = '发生变化的原文引句。\n另一行。'; fs.writeFileSync(sourceFile, content); } return { sourceChecked: qualityOk, coverage: true, citationsReal: true, terminologyConsistent: true, languageConsistent: true, chunkChecks: [{ chunkId: 1, startLine: 1, endLine: 2, sourceExcerpt: content.split('\n')[0], covered: true }], citationChecks: [{ quote: '原文引句', sourceQuote: content.split('\n')[0], chunkId: 1, startLine: 1, endLine: 1, location: '第 1 行', verified: true }], issues: [] }; }
         throw new Error('unexpected: ' + options.label);
       }
     }).then(value => ({ stopReason: 'completed', value }));
