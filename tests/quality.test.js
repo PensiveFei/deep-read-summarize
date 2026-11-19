@@ -94,6 +94,39 @@ test('O01 quoted blockquotes keep source text separate from Markdown and locatio
   }
 });
 
+test('blockquote attribution placement preserves the same quotes and citation requirements', () => {
+  const quotes = ['原文引句', '另一句原话'];
+  const evidence = sourceResult(context);
+  evidence.chunkChecks[0].sourceExcerpt = quotes.join('\n');
+  const records = quotes.map((quote, i) => ({
+    quote, sourceQuote: quote, chunkId: 1, startLine: i + 2, endLine: i + 2,
+    location: 'line ' + (i + 2), verified: true
+  }));
+  const layouts = ['\n', '> '].map(prefix => quotes.map((quote, i) =>
+    '> "' + quote + '"\n' + prefix + '——作者，原文第 ' + (i + 2) + ' 行').join('\n\n'));
+  layouts.push('> 原文引句\n> 另一句原话\n>\n> — **A. Smith**, lines 2–3');
+  for (const layout of layouts) {
+    const text = note().replace('“原文引句”（第 2 行）', layout);
+    const checked = quality.checkNoteStructure(text, { minWords: 1, fastMode: true, expectedFrontmatter: fm });
+    assert.deepEqual(checked.quotes, quotes, layout);
+    const ctx = { ...context, note: text, visibleNote: checked.visibleText, quotes: checked.quotes };
+    const validate = citationChecks => quality.validateSourceCheck({ ...evidence, citationChecks }, ctx);
+    assert.equal(validate(records).passed, true, layout);
+    assert.equal(validate(records.slice(0, 1)).checks.citationsReal, false, layout);
+    assert.equal(validate([records[0], { ...records[1], sourceQuote: '不同的原文' }]).checks.citationsReal, false, layout);
+  }
+});
+
+test('dash-led speech and the first line of a new blockquote still require evidence', () => {
+  const layout = [
+    '> 原文引句', '> ——我也这样想。', '> — Keep going (line 2)', '> — “再等一等” (line 3)',
+    '> -- Author, line 3', '', '> — 开场白（第 4 行）'
+  ].join('\n');
+  const text = note().replace('“原文引句”（第 2 行）', layout);
+  const checked = quality.checkNoteStructure(text, { minWords: 1, fastMode: true, expectedFrontmatter: fm });
+  assert.deepEqual(checked.quotes, ['原文引句', '——我也这样想。', '— Keep going', '再等一等', '— 开场白']);
+});
+
 test('O01 refuses bare pass flags, missing chunk evidence, incorrect line ranges, and unsupported quotes', () => {
   assert.equal(quality.validateSourceCheck(sourceResult(context), context).passed, true);
   const invalid = [

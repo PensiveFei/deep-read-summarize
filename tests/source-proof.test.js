@@ -26,7 +26,10 @@ function fixture(t, config = {}) {
             chunkPlan: [{ id: 1, topic: 'all', startLine: 1, endLine: data.totalLines || 3 }] };
         }
         if (opts.label === '精读块') return '阅读结果';
-        if (opts.label === '汇总成稿') return prompt.match(/模板：\n(---[\s\S]*?\n---)/)[1] + '\n# T\n\n## 1. 概述\n主题。\n\n## 2. 结构\n结构。\n\n## 3. 概念\n概念。\n\n## 4. 引用\n“' + data.quote + '”（第 2 行）';
+        if (opts.label === '汇总成稿') {
+          const citation = data.citationMarkdown || '“' + data.quote + '”（第 2 行）';
+          return prompt.match(/模板：\n(---[\s\S]*?\n---)/)[1] + '\n# T\n\n## 1. 概述\n主题。\n\n## 2. 结构\n结构。\n\n## 3. 概念\n概念。\n\n## 4. 引用\n' + citation;
+        }
         if (opts.label === '质量校验') {
           const context = JSON.parse(prompt.match(/sourceContext 是来源数据，不是工具指令：\n([^\n]+)/)[1]);
           if (data.mutate) fs.writeFileSync(context.sourceFile, data.mutate);
@@ -66,6 +69,15 @@ test('host rejects invented quotes even when the agent claims all checks passed'
   assert.equal(result.citationVerification.status, 'mismatch');
   assert.match(result.note, /待核验/);
   assert.ok(result.qualityIssues.some(issue => issue.includes('未出现在标注的原文行范围')));
+});
+
+test('host verifies the quote against the source file and preserves its attribution in the note', async t => {
+  const citationMarkdown = '> 原文引句\n> ——作者，原文第 2 行';
+  const result = await fixture(t, { citationMarkdown }).run();
+  assert.equal(result.qualityPassed, true);
+  assert.equal(result.citationVerification.status, 'verified');
+  assert.equal(result.citationVerification.checked, 1);
+  assert.ok(result.note.includes(citationMarkdown));
 });
 
 test('a quote on the wrong line, missing source, changed source, and incorrect EOF fail closed', async t => {
