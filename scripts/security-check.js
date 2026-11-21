@@ -5,7 +5,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'coverage', '.nyc_output', '_deepread_temp']);
+// e2e-artifacts 是真实模型跑出来的产物与事件日志（已 gitignore）：里面出现什么由模型决定，
+// 扫它只会制造噪声，也会让「本地刚跑完 E2E 就跑 security」变成假失败。
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'coverage', '.nyc_output', '_deepread_temp', 'e2e-artifacts']);
 // 匹配文件后缀：js/md/yml/yaml/json/txt + .env.example（.example 结尾）
 const FILE_RE = /\.(js|md|yml|yaml|json|txt|example)$/i;
 const PATTERNS = [
