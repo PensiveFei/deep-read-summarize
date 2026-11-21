@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 
-const { resolveConfig, buildMessages, verifyNote, normalizeQuote } = require('../scripts/model-canary');
+const { resolveConfig, buildMessages, verifyNote, normalizeQuote, listCases } = require('../scripts/model-canary');
 
 const SOURCE = [
   '城市热岛效应指的是城市中心气温明显高于周边郊区与乡村的现象。',
@@ -97,4 +97,20 @@ test('the canary prompt mirrors the note template published in SKILL.md', () => 
   for (const heading of headings) {
     assert.ok(prompt.includes(heading), 'canary 提示词缺少模板章节：' + heading);
   }
+});
+
+// 一篇素材只能给一个平均值：表格密集的原文和中英混排的术语，模型表现可以完全不同。
+// 这里钉住「素材是一组、且每个都能被读到」，并给一个下限防止有人把 cases 删空。
+test('the canary runs a set of cases, not a single source', () => {
+  const root = path.join(__dirname, '..');
+  const dir = path.join(root, 'tests', 'fixtures', 'canary', 'cases');
+  const cases = listCases(dir);
+  assert.ok(cases.length >= 3, '至少要有 3 篇素材，当前 ' + cases.length);
+  for (const name of cases) {
+    assert.match(name, /\.md$/i);
+    const text = fs.readFileSync(path.join(dir, name), 'utf8');
+    assert.ok(text.trim().length >= 500, name + ' 太短：笔记篇幅下限是 400，素材太短会让金丝雀假失败');
+  }
+  // 排序稳定，否则「今天失败的是哪一篇」会随文件系统顺序变化。
+  assert.deepStrictEqual(cases.slice().sort(), listCases(dir));
 });
