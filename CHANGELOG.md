@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - 端到端检查 `npm run test:e2e:dsh`（`scripts/e2e-dsh.js` + 手动 `e2e-dsh.yml`）：在隔离的 DSH headless profile 里装本包，用真实模型跑一次精读，断言笔记真的落盘并通过结构检查。这条覆盖的是装配——插件能否被 mount、工具能否注册、模型会不会调用它——也就是 0.3.3「入口没导出 apply()、宿主起不来」那类回归唯一能被自动发现的地方。工作区放在系统临时目录：Windows 的 workspace-write 沙箱要给工作区目录改 DACL，仓库目录属于另一个 SID 时会被拒（Win32 5）。
 - 转写链路的装配检查 `npm run test:asr`（`scripts/asr-check.js` + 手动 `asr-check.yml`）：uv 自举 → Python 3.12 → faster-whisper → small 模型 → 落盘 → 缓存，四个用例分别是「语音转写成功」「同一音频命中缓存且输出字节一致」「10 秒静音按设计失败且不留下空文件」「同一段语音转成 aac-in-mp4 后可解码」。此前转写是三平台同等支持里唯一没有任何自动化覆盖的一段——不补它，那句话只能靠人肉试；mp4 那条尤其重要，用户传的素材几乎都不是裸 wav。判据刻意不比对任何文字：转写质量由人听，这里只抓装配断没断。静音样本由纯 Node 生成（320KB 全零数组不值得进仓库），语音样本在 CI 里用 espeak-ng 合成、再由 ffmpeg 转封装成 mp4，所以不需要提交任何真实音视频。
 
+### Fixed
+
+- 转写自举出来的环境在「首次解码」时崩掉：`faster-whisper 1.2.1` 只声明 `av>=11`，但它的 `audio.py` 调了 `av.open(..., metadata_errors="ignore")`，而那个参数是 PyAV 12 才有的。装到 av 11 时建环境、导入都正常，只有真正开始转写才 TypeError（`open() got an unexpected keyword argument 'metadata_errors'`）。现在安装时显式带上 `av>=12`；并且在导入 faster-whisper 之前检查已装的 PyAV 主版本，低于 12 就触发一次重装——已经有坏环境的用户下次运行会自动修好，不需要手动删缓存。镜像装不上时改用 PyPI 直连重试（镜像是加速用的，不是唯一来源）。
+
 ## [0.6.6] — 2026-11-19
 
 修复关键引用核验把 Markdown 引用块里的署名误算为引文的问题。

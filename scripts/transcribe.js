@@ -238,6 +238,18 @@ const PY_RUNNER = [
   "    if installed_version != expected_version:",
   "        bootstrap_required(" + DEPENDENCY_VERSION_MISMATCH + ", 'version-mismatch', 'faster-whisper %s requires %s' % (installed_version, expected_version))",
   "",
+  "# PyAV：faster-whisper 1.2.1 只声明 av>=11，但它的 audio.py 传了 av 12 才有的",
+  "# metadata_errors。装到 av 11 时导入不会报错，等到真正解码才 TypeError——",
+  "# 所以在导入 faster_whisper 之前就判定，并让上层触发一次重装（安装时会带 av>=12）。",
+  "try:",
+  "    av_version = metadata.version('av')",
+  "    if int(av_version.split('.')[0]) < 12:",
+  "        bootstrap_required(" + DEPENDENCY_VERSION_MISMATCH + ", 'version-mismatch', 'PyAV %s lacks metadata_errors (needs av>=12)' % av_version)",
+  "except metadata.PackageNotFoundError:",
+  "    pass",
+  "except ValueError:",
+  "    pass",
+  "",
   "try:",
   "    from faster_whisper import WhisperModel",
   "except ModuleNotFoundError as exc:",
@@ -518,7 +530,23 @@ function main(argv) {
       if (uv === null) throw new Error('需要安装 faster-whisper==' + FASTER_WHISPER_VERSION + '，但没有找到 uv。请先安装：' + uvInstallHint(c));
       process.stdout.write('[transcribe] 安装 faster-whisper==' + FASTER_WHISPER_VERSION + '（清华镜像）…\n');
       const installStarted = Date.now();
-      runStep(uv, ['pip', 'install', '--python', py, 'faster-whisper==' + FASTER_WHISPER_VERSION, '-i', PYPI_MIRROR], childEnv, 'faster-whisper 安装');
+      // av>=12 是硬要求，尽管 faster-whisper 1.2.1 只声明 av>=11：
+      // 它的 audio.py 会调 av.open(..., metadata_errors="ignore")，那个参数是 av 12 才有的。
+      // 装到 av 11 时导入与建环境都正常，要等到真正解码才 TypeError——真实用户在
+      // 「首次转写」那一刻才撞上，排查成本最高。这里把它抬到安装期。
+      const installArgs = function (mirror) {
+        const base = ['pip', 'install', '--python', py,
+          'faster-whisper==' + FASTER_WHISPER_VERSION, 'av>=12'];
+        return mirror ? base.concat(['-i', PYPI_MIRROR]) : base;
+      };
+      try {
+        runStep(uv, installArgs(true), childEnv, 'faster-whisper 安装');
+      } catch (mirrorError) {
+        // 镜像是加速用的，不是唯一来源：缺版本或挂掉就换直连，不能让用户卡在装不上。
+        // （与 uv venv 那一步的「镜像失败重试直连」是同一个原则。）
+        process.stdout.write('[transcribe] 镜像安装失败，改用 PyPI 直连重试：' + mirrorError.message + '\n');
+        runStep(uv, installArgs(false), childEnv, 'faster-whisper 安装（直连）');
+      }
       timing.dependencyInstall = Date.now() - installStarted;
       fs.rmSync(bootstrapStatus, { force: true });
       runStep(py, [pyScript], childEnv, '转写');
