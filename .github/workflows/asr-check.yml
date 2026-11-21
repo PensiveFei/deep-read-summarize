@@ -1,0 +1,68 @@
+name: ASR assembly check
+
+# 转写链路的装配检查：uv 自举 → Python 3.12 → faster-whisper → small 模型 → 落盘 → 缓存。
+# 只验装配，不验质量（判据里不比对任何文字）。三个用例见 scripts/asr-check.js 头部。
+#
+# 只手动触发：首次要装 Python 3.12 + faster-whisper + 下载 484MB 模型（缓存后 30s 左右）。
+# 这条链路是三平台同等支持里唯一没有任何自动化覆盖的部分——不补它，
+# "三平台同等支持" 在转写上就只能靠人肉试。
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'faster-whisper 模型（留空 = small）'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asr-check
+  cancel-in-progress: false
+
+jobs:
+  asr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      # 语音样本不进仓库：用 espeak-ng 合成一段真实的合成语音（内容无所谓，只要不是静音）。
+      - name: Install espeak-ng and uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends espeak-ng
+          python3 -m pip install --user uv
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          espeak-ng --version
+          python3 -m uv --version
+
+      # 缓存 venv 与模型（脚本把两者都放在 <cacheRoot>/ 下：venv 与 hf/）。
+      # key 里带模型名：换模型等于换缓存，不能复用。
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/deep-read-summarize
+          key: asr-${{ runner.os }}-${{ inputs.model || 'small' }}
+          restore-keys: asr-${{ runner.os }}-
+
+      # ubuntu runner 自带 ffmpeg，但这里显式断言它存在：
+      # 否则第 4 个用例（mp4 容器）会静默跳过，而"绿了"会被误读成"容器解码也测过了"。
+      - name: Verify ffmpeg is available
+        run: ffmpeg -version | head -n 1
+
+      - name: Synthesise a 10-second speech sample
+        run: |
+          espeak-ng -v en-us -s 140 -w "$RUNNER_TEMP/speech.wav" \
+            "The quick brown fox jumps over the lazy dog. Transcription systems should handle plain sentences. This sample only checks the pipeline, not the accuracy."
+          ls -l "$RUNNER_TEMP/speech.wav"
+
+      - name: ASR assembly check
+        env:
+          ASR_MODEL: ${{ inputs.model || 'small' }}
+        run: node scripts/asr-check.js --speech "$RUNNER_TEMP/speech.wav"
