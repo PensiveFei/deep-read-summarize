@@ -3,9 +3,11 @@
 // 门槛写错的后果比没有门槛更糟：要么永远绿（没人再信它），要么因为一次正常重构
 // 就红（下一个人直接把它从 CI 里删掉）。所以解析与判定都做成纯函数，在这里逐条验。
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const { test } = require('node:test');
 
-const { parseLcov, evaluate, MIN_FILE_LINES } = require('../scripts/coverage');
+const { parseLcov, evaluate, MAINTAINER_SCRIPTS, MIN_FILE_LINES } = require('../scripts/coverage');
 
 const HEALTHY = { lines: 80, branches: 70, functions: 80, fileLines: 40 };
 
@@ -93,4 +95,27 @@ test('files below the per-file minimum are exempt from the per-file floor', () =
 
 test('empty input is rejected by the caller, not silently passing', () => {
   assert.deepStrictEqual(parseLcov(''), []);
+});
+
+test('evaluate leaves maintainer-only scripts out of the denominator', () => {
+  // 不随包发布的脚本（release / coverage / canary / e2e）只是 CLI 外壳，
+  // 逻辑被抽成纯函数由单测覆盖、端到端由各自 workflow 跑；它们进分母只会
+  // 让「发布代码的真实覆盖率」被稀释成一个谁也看不懂的数字。
+  const records = [
+    { file: 'index.js', lf: 100, lh: 100, brf: 0, brh: 0, fnf: 0, fnh: 0 },
+    { file: 'scripts/e2e-dsh.js', lf: 100, lh: 0, brf: 0, brh: 0, fnf: 0, fnh: 0 }
+  ];
+  const report = evaluate(records, HEALTHY, ['scripts/e2e-dsh.js']);
+  assert.equal(report.ok, true, report.failures.join('; '));
+  assert.equal(report.aggregate.lines, 100);
+  assert.equal(report.skipped, 1);
+});
+
+test('the exclusion list comes from package.json and points at real files', () => {
+  const root = path.join(__dirname, '..');
+  const excluded = MAINTAINER_SCRIPTS();
+  assert.ok(excluded.includes('scripts/release.js'), excluded.join(', '));
+  for (const file of excluded) {
+    assert.ok(fs.existsSync(path.join(root, file)), 'package.json 排除了不存在的文件：' + file);
+  }
 });
