@@ -148,7 +148,13 @@ test('a failed installation is not followed by inference or success publication'
     return signal(env, transcribe.DEPENDENCY_MISSING, 'missing-dependency');
   } });
   assert.equal(h.main(), 1);
-  assert.equal(h.calls.length, 2);
+  // 镜像失败会换直连再试一次（镜像是加速用的，不是唯一来源），两次都失败就停：
+  // 仍然不允许把失败伪装成成功，也不允许无限重试。
+  assert.equal(h.calls.length, 3);
+  const pips = h.calls.filter(function (c) { return c.args[0] === 'pip'; });
+  assert.equal(pips.length, 2);
+  assert.ok(pips[0].args.indexOf('-i') >= 0, '第一次应走镜像');
+  assert.equal(pips[1].args.indexOf('-i'), -1, '重试应直连，不再指定镜像');
   assert.equal(fs.existsSync(h.out), false);
   assert.ok(!h.stdout.join('').includes('DONE'));
 });
@@ -173,6 +179,10 @@ test('a fresh environment bootstraps Python then dependencies without an import 
   assert.deepEqual(h.calls.map(function (c) {
     return c.args[0] === 'venv' || c.args[0] === 'pip' ? c.args[0] : 'runner';
   }), ['venv', 'runner', 'pip', 'runner']);
+  // av>=12 必须显式带上：faster-whisper 1.2.1 只声明 av>=11，但它的 audio.py 用了
+  // av 12 才有的 metadata_errors，装到 11 会在真正解码那一刻 TypeError。
+  const pip = h.calls.filter(function (c) { return c.args[0] === 'pip'; })[0];
+  assert.ok(pip.args.indexOf('av>=12') >= 0, 'pip 安装参数里必须包含 av>=12：' + pip.args.join(' '));
 });
 
 test('a failed venv attempt cannot reuse the partial interpreter it left behind', function (t) {

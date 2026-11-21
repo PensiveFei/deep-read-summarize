@@ -34,13 +34,16 @@ jobs:
           node-version: 24
 
       # 语音样本不进仓库：用 espeak-ng 合成一段真实的合成语音（内容无所谓，只要不是静音）。
-      - name: Install espeak-ng and uv
+      # ffmpeg 也要显式装：ubuntu-latest 并不保证 PATH 上有它（第一次跑就是这样静默跳过了
+      # mp4 用例），而 mp4 容器解码正是第 4 个用例要覆盖的分支。
+      - name: Install espeak-ng, ffmpeg and uv
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends espeak-ng
+          sudo apt-get install -y --no-install-recommends espeak-ng ffmpeg
           python3 -m pip install --user uv
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           espeak-ng --version
+          ffmpeg -version | head -n 1
           python3 -m uv --version
 
       # 缓存 venv 与模型（脚本把两者都放在 <cacheRoot>/ 下：venv 与 hf/）。
@@ -51,10 +54,13 @@ jobs:
           key: asr-${{ runner.os }}-${{ inputs.model || 'small' }}
           restore-keys: asr-${{ runner.os }}-
 
-      # ubuntu runner 自带 ffmpeg，但这里显式断言它存在：
-      # 否则第 4 个用例（mp4 容器）会静默跳过，而"绿了"会被误读成"容器解码也测过了"。
+      # 断言要用 `command -v`，不能只看 `ffmpeg -version | head -n 1`：
+      # 管道的退出码取最后一个命令（head），ffmpeg 不存在时这一步照样"成功"——
+      # 第一次跑就是这么把「没有 ffmpeg」放过去的。
       - name: Verify ffmpeg is available
-        run: ffmpeg -version | head -n 1
+        run: |
+          command -v ffmpeg
+          ffmpeg -version | head -n 1
 
       - name: Synthesise a 10-second speech sample
         run: |
