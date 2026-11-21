@@ -135,12 +135,12 @@ function main() {
   const secondOut = path.join(work, 'speech-2.txt');
   const silenceOut = path.join(work, 'silence.txt');
 
-  console.log('\n[1/3] 语音 → 转写（首次，可能要装环境与模型）');
+  console.log('\n[1/4] 语音 → 转写（首次，可能要装环境与模型）');
   const first = runTranscribe(speech, firstOut, ['--refresh-cache']);
   const firstCase = Object.assign({ name: '语音转写', expectCacheHit: false, outFile: firstOut }, first);
   printCase(firstCase);
 
-  console.log('\n[2/3] 同一音频 → 再来一次（应命中缓存）');
+  console.log('\n[2/4] 同一音频 → 再来一次（应命中缓存）');
   const second = runTranscribe(speech, secondOut, []);
   const secondCase = Object.assign({ name: '缓存命中', expectCacheHit: true, outFile: secondOut }, second);
   printCase(secondCase);

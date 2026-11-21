@@ -51,8 +51,8 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/deep-read-summarize
-          key: asr-${{ runner.os }}-${{ inputs.model || 'small' }}
-          restore-keys: asr-${{ runner.os }}-
+          key: asr2-${{ runner.os }}-${{ inputs.model || 'small' }}
+          restore-keys: asr2-${{ runner.os }}-
 
       # 断言要用 `command -v`，不能只看 `ffmpeg -version | head -n 1`：
       # 管道的退出码取最后一个命令（head），ffmpeg 不存在时这一步照样"成功"——
