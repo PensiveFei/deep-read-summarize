@@ -44,13 +44,23 @@ const ROOT = path.join(__dirname, '..');
 // 镜像的漂移由 tests/model-canary.test.js 兜住：模板标题必须与 SKILL.md 里的
 // ```markdown 块逐行一致，改了一边另一边没跟上就会红。
 const PROMPT = path.join(ROOT, 'tests', 'fixtures', 'canary', 'prompt.md');
-const SOURCE = path.join(ROOT, 'tests', 'fixtures', 'canary', 'source.md');
+// 素材放在 cases/ 下，每个文件一次调用：一篇长文抓不到「某类输入退化」——
+// 表格密集的原文、中英混排的术语，模型的表现可以完全不同，而单素材金丝雀
+// 只会给一个平均值。
+const CASES = path.join(ROOT, 'tests', 'fixtures', 'canary', 'cases');
 const OUT_DIR = path.join(ROOT, 'e2e-artifacts', 'canary');
+
+/** 列出素材（按文件名排序，保证每次跑的次序一致）。 */
+function listCases(dir) {
+  return fs.readdirSync(dir)
+    .filter(function (f) { return /\.md$/i.test(f); })
+    .sort();
+}
 
 const DEFAULTS = {
   baseUrl: 'https://api.deepseek.com/v1',
   model: 'deepseek-flash',
-  maxCalls: 2,
+  maxCalls: 4,
   maxTokens: 2048,
   maxTotalTokens: 40000,
   minWords: 400
@@ -181,9 +191,9 @@ async function callModel(cfg, messages, signal) {
   return { text: text, usage: payload.usage || {} };
 }
 
-function writeArtifacts(sampleIndex, reply, report) {
+function writeArtifacts(caseName, sampleIndex, reply, report) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const base = path.join(OUT_DIR, 'sample-' + (sampleIndex + 1));
+  const base = path.join(OUT_DIR, caseName.replace(/\.md$/i, '') + '-sample-' + (sampleIndex + 1));
   fs.writeFileSync(base + '.md', reply, 'utf8');
   fs.writeFileSync(base + '.report.json', JSON.stringify(report, null, 2) + '\n', 'utf8');
   return base;
@@ -192,13 +202,22 @@ function writeArtifacts(sampleIndex, reply, report) {
 async function main() {
   const cfg = resolveConfig(process.env, process.argv.slice(2));
   const instructions = fs.readFileSync(PROMPT, 'utf8');
-  const source = fs.readFileSync(SOURCE, 'utf8');
-  const messages = buildMessages(instructions, source);
+  const cases = listCases(CASES).map(function (name) {
+    return { name: name, source: fs.readFileSync(path.join(CASES, name), 'utf8') };
+  });
+  if (!cases.length) throw new Error('tests/fixtures/canary/cases/ 下没有素材');
+  const planned = cases.length * cfg.samples;
+  if (planned > cfg.maxCalls) {
+    throw new Error('素材 ' + cases.length + ' 篇 × ' + cfg.samples + ' 次 = ' + planned +
+      ' 次调用，超过预算上限 CANARY_MAX_CALLS=' + cfg.maxCalls);
+  }
 
   console.log('canary: model=' + cfg.model + ' thinking=' + cfg.thinking + ' base=' + cfg.baseUrl +
-    ' samples=' + cfg.samples + ' minWords=' + cfg.minWords +
+    ' cases=' + cases.length + ' samples/case=' + cfg.samples + ' minWords=' + cfg.minWords +
     ' maxTokens=' + cfg.maxTokens + ' budget=' + cfg.maxTotalTokens + ' tokens');
-  console.log('prompt: system ' + instructions.length + ' chars, user ' + messages[1].content.length + ' chars, source ' + source.length + ' chars');
+  console.log('prompt: system ' + instructions.length + ' chars; cases: ' + cases.map(function (c) {
+    return c.name.replace(/\.md$/i, '') + '(' + c.source.length + ')';
+  }).join(', '));
 
   if (cfg.dryRun) {
     console.log('dry-run：不联网、不校验。真实运行请去掉 --dry-run 并提供 DEEPSEEK_API_KEY。');
@@ -207,37 +226,47 @@ async function main() {
 
   let totalTokens = 0;
   const failures = [];
-  for (let i = 0; i < cfg.samples; i++) {
-    const started = Date.now();
-    const result = await callModel(cfg, messages, AbortSignal.timeout(180000));
-    totalTokens += Number(result.usage.total_tokens || 0);
-    const report = verifyNote(result.text, source, { minWords: cfg.minWords });
-    report.usage = result.usage;
-    report.model = cfg.model;
-    report.elapsedMs = Date.now() - started;
-    const base = writeArtifacts(i, result.text, report);
-    console.log('sample ' + (i + 1) + ': ' + (report.ok ? 'OK' : 'FAIL') +
-      ' — ' + report.stats.wordCount + ' 字/词, ' + report.stats.quotes + ' 条引文, ' +
-      Math.round(report.elapsedMs / 1000) + 's, ' + (result.usage.total_tokens || '?') + ' tokens → ' + path.relative(ROOT, base) + '.md');
-    if (!report.ok) for (const failure of report.failures) failures.push('sample ' + (i + 1) + ': ' + failure);
-    if (totalTokens > cfg.maxTotalTokens) {
-      throw new Error('累计 ' + totalTokens + ' token 超过预算上限 ' + cfg.maxTotalTokens + '：停止调用');
+  for (const item of cases) {
+    const messages = buildMessages(instructions, item.source);
+    for (let i = 0; i < cfg.samples; i++) {
+      const started = Date.now();
+      const result = await callModel(cfg, messages, AbortSignal.timeout(180000));
+      totalTokens += Number(result.usage.total_tokens || 0);
+      const report = verifyNote(result.text, item.source, { minWords: cfg.minWords });
+      report.usage = result.usage;
+      report.model = cfg.model;
+      report.case = item.name;
+      report.elapsedMs = Date.now() - started;
+      const base = writeArtifacts(item.name, i, result.text, report);
+      const label = item.name.replace(/\.md$/i, '') + (cfg.samples > 1 ? ' #' + (i + 1) : '');
+      console.log(label + ': ' + (report.ok ? 'OK' : 'FAIL') +
+        ' — ' + report.stats.wordCount + ' 字/词, ' + report.stats.quotes + ' 条引文, ' +
+        Math.round(report.elapsedMs / 1000) + 's, ' + (result.usage.total_tokens || '?') + ' tokens → ' +
+        path.relative(ROOT, base) + '.md');
+      if (!report.ok) for (const failure of report.failures) failures.push(label + ': ' + failure);
+      if (totalTokens > cfg.maxTotalTokens) {
+        throw new Error('累计 ' + totalTokens + ' token 超过预算上限 ' + cfg.maxTotalTokens + '：停止调用');
+      }
     }
   }
   if (failures.length) {
     for (const failure of failures) console.error('CANARY: ' + failure);
     console.error('金丝雀未通过（' + failures.length + ' 项）。产物留在 e2e-artifacts/canary/ 里供比对；' +
       '先判断是模型/提示词的问题还是校验器过严，不要直接放宽门槛。');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
-  console.log('Canary OK: ' + cfg.samples + ' 篇笔记通过结构、篇幅与引文检查（累计 ' + totalTokens + ' token）');
+  console.log('Canary OK: ' + planned + ' 篇笔记通过结构、篇幅与引文检查（累计 ' + totalTokens + ' token）');
 }
 
-module.exports = { resolveConfig, buildMessages, verifyNote, normalizeQuote, DEFAULTS };
+module.exports = { resolveConfig, buildMessages, verifyNote, normalizeQuote, listCases, DEFAULTS };
 
 if (require.main === module) {
   main().catch(function (error) {
     console.error('CANARY: ' + error.message);
-    process.exit(2);
+    // 用 exitCode 而不是 process.exit：请求失败时 undici 的连接/计时器还在收尾，
+    // 硬退出会踩 libuv 的 `!(handle->flags & UV_HANDLE_CLOSING)` 断言
+    // （Windows + Node 24 实测，比真正的错误信息更吓人，还会把退出码变成崩溃码）。
+    process.exitCode = 2;
   });
 }

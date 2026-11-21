@@ -49,7 +49,7 @@ node scripts/transcribe.js --self-check
 
 | 检查 | 跑什么 | 何时跑 | 成本 |
 |---|---|---|---|
-| 金丝雀 `npm run test:canary` | 插件提示词 → 真实模型 → 用 `lib/quality.js` 判结构/篇幅/引文 | 每晚 `model-canary.yml`，也可手动 | 每次 1–2 次调用，上限写在 workflow 里 |
+| 金丝雀 `npm run test:canary` | 3 篇素材（说明文 / 表格密集 / 中英混排）各跑一遍真实模型，用 `lib/quality.js` 判结构/篇幅/引文 | 每晚 `model-canary.yml`，也可手动 | 3 次调用，上限写在 workflow 里 |
 | 端到端 `npm run test:e2e:dsh` | 在隔离的 DSH headless profile 里装本包，真跑一次精读，断言落盘笔记 | 手动 `e2e-dsh.yml`（发布前） | 一次完整 workflow，分钟级 |
 | 转写装配 `npm run test:asr` | uv 自举 → Python 3.12 → faster-whisper → 模型 → 落盘 → 缓存；四个用例：语音转写成功、同一音频命中缓存且字节一致、10 秒静音按设计失败且不留空文件、mp4 容器可解码 | 手动 `asr-check.yml` | 首次装环境 + 484MB 模型，缓存后约 30s |
 
