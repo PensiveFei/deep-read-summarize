@@ -23,7 +23,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 ## 输入
 
 用户提供：内容链接或本地文件路径。
-可选参数：`type`（auto/book/paper/video/web）、`options`（lengthMode / minWords / fastMode / maxChunks / readConcurrency / parallelQuality / readCache / readCacheIdentity / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / cpuThreads / transcriptCache / outputDir / tempDir / frontmatter）。
+可选参数：`type`（auto/book/paper/video/web）、`options`（lengthMode / minWords / fastMode / maxChunks / readConcurrency / readRetries / resumeReads / parallelQuality / readCache / readCacheIdentity / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / cpuThreads / transcriptCache / outputDir / tempDir / frontmatter）。
 
 优先调用插件提供的 `deep_read_summarize` 工具，参数为 `{ input, type, options }`。如果当前宿主没有这个工具，按技能末尾提供的 meta / script / args 调用 `workflow` 工具；裸 workflow 无法在宿主侧读取文件做程序化引文核验，须如实报告未核验。
 
@@ -49,6 +49,8 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 9. **如实交代结果**：`ok: false` 要说明阶段与原因；`qualityPassed: false`、`qualityIssues` 非空或 `failedChunks > 0` 时必须说明。`sourceStatus: unknown` 表示来源完整性未确认，即使其他检查通过也不能宣称获得全文；`partial` 表示已知有缺口。`citationVerification.status` 为 `unverified` 或 `mismatch` 时必须说明并建议复核。若 `draftContext` 中有额外文字，说明它未经过原文核验
 
 跨次精读缓存默认关闭，仅插件工具入口支持；启用 `readCache` 时必须填写 `readCacheIdentity`（供应商、固定模型版本及输出相关设置）。身份由调用者保证，变更时必须更换；缓存明文保存在 `tempDir/.read-cache-v1`，可能包含原文摘录，命中后仍独立核验原文。
+
+精读块临时失败会自动重试，`readRetries` 默认 1、范围 0–3；`maxRetries` 则控制成稿修订。需要中断续跑时，插件工具可设置 `resumeReads: true` 和准确的 `readCacheIdentity`，相同来源与配置再次调用即可复用已完成块。身份不可臆造；未掌握真实模型版本和设置时不要启用。续跑记录默认关闭，以明文保存在 `tempDir/.read-checkpoints-v1`，可能含原文摘录；提醒用户这个存储方式。命中仍须成稿和独立核验；`readResume.unsaved > 0`、`sourceAvailable: false` 或 `reason: source_changed` 时必须告知用户哪些结果未能保存、可能需要重跑。裸 workflow 不支持持久续跑。
 
 ## 输出
 

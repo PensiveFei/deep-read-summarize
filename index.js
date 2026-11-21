@@ -146,7 +146,7 @@ function readingTool(engine, defaults, registry) {
       const started = Date.now();
       // Acquire first, then snapshot the actual file in the host. The second
       // workflow sees the same acquisition but cannot forge the host snapshot.
-      async function runChecked(useCache, canRetry) {
+      async function runChecked(useCache, canRetry, useResume) {
         const localBefore = sourceProof.readLocalInput(args.input.trim());
         const prepared = await runWorkflow(Object.assign({}, startArgs, { __cachePrepare: true }));
         if (!prepared.__cachePrepared) {
@@ -164,16 +164,68 @@ function readingTool(engine, defaults, registry) {
         }
         if (!Array.isArray(prepared.chunkPrompts) || !Array.isArray(prepared.chunkPlan) || prepared.chunkPrompts.length !== prepared.chunkPlan.length || prepared.chunkPrompts.length > 12 || typeof prepared.tempFile !== 'string' || typeof prepared.tempDir !== 'string' || typeof prepared.selectedType !== 'string' || !prepared.fetched || typeof prepared.fetched !== 'object') throw new Error('deep_read_summarize returned invalid source preparation');
         const before = sourceProof.readRunSource(options.tempDir, prepared.tempDir, prepared.tempFile);
-        const keys = prepared.chunkPrompts.map(function (prompt) { return useCache && before ? readCache.keyFor(before.digest, options.readCacheIdentity, prompt, prepared.tempFile) : null; });
-        const hits = keys.map(function (key) { return key ? readCache.read(options.tempDir, key) : null; });
+        const keys = prepared.chunkPrompts.map(function (prompt) { return (useCache || useResume) && before ? readCache.keyFor(before.digest, options.readCacheIdentity, prompt, prepared.tempFile) : null; });
+        const cacheHits = keys.map(function (key) { return useCache && key ? readCache.read(options.tempDir, key) : null; });
+        const checkpointHits = keys.map(function (key, i) { return useResume && key && !cacheHits[i] ? readCache.read(options.tempDir, key, true) : null; });
+        const hits = keys.map(function (_, i) { return cacheHits[i] || checkpointHits[i]; });
         const resume = { tempDir: prepared.tempDir, selectedType: prepared.selectedType, fetched: prepared.fetched, prompts: prepared.chunkPrompts, hits: hits };
         if (exec.signal && exec.signal.aborted) throw new Error('deep_read_summarize was cancelled before source verification');
+        let checkpointTimings = null, checkpointElapsed = 0, checkpointsSaved = 0, unsavedChunkIds = [];
+        if (useResume) {
+          const readStart = Date.now();
+          const settled = hits.map(function (hit) { return !!hit; });
+          resume.settled = settled;
+          checkpointTimings = prepared.chunkPlan.map(function (chunk, i) {
+            return { chunkId: chunk.id, startLine: chunk.startLine, endLine: chunk.endLine, elapsedMs: 0,
+              succeeded: !!hits[i], cacheHit: !!cacheHits[i], resumed: !!checkpointHits[i], attempts: 0 };
+          });
+          let next = 0, stopped = false, firstError = null;
+          async function readWorker() {
+            while (!stopped && next < hits.length) {
+              const i = next++;
+              if (settled[i]) continue;
+              if (exec.signal && exec.signal.aborted) { stopped = true; firstError = firstError || new Error('deep_read_summarize was cancelled'); break; }
+              try {
+                const part = await runWorkflow(Object.assign({}, startArgs, { __cacheResume: resume, __readOnlyIndex: i }));
+                if (!part.__readOnly || part.index !== i || typeof part.note !== 'string' || !part.readTiming || typeof part.readTiming !== 'object') throw new Error('deep_read_summarize returned an invalid chunk result');
+                hits[i] = part.note;
+                settled[i] = true;
+                checkpointTimings[i] = Object.assign({}, part.readTiming, { resumed: false });
+                const current = sourceProof.readRunSource(options.tempDir, prepared.tempDir, prepared.tempFile);
+                if (part.note.trim()) {
+                  if (before && current && before.digest === current.digest && keys[i] && readCache.portable(part.note, prepared.tempDir) && readCache.write(options.tempDir, keys[i], part.note, true)) checkpointsSaved++;
+                  else unsavedChunkIds.push(prepared.chunkPlan[i].id);
+                }
+              } catch (error) { stopped = true; firstError = firstError || error; }
+            }
+          }
+          await Promise.all(Array.from({ length: Math.min(options.readConcurrency, hits.length) }, readWorker));
+          if (firstError) throw firstError;
+          if (exec.signal && exec.signal.aborted) throw new Error('deep_read_summarize was cancelled');
+          checkpointElapsed = Date.now() - readStart;
+        }
         const result = await runWorkflow(Object.assign({}, startArgs, { __cacheResume: resume, __hostVerification: true }));
         const after = sourceProof.readRunSource(options.tempDir, prepared.tempDir, prepared.tempFile);
         const stable = !!before && !!after && before.digest === after.digest;
         // Preserve the previous cache behavior: retry once without cached reads
         // when the acquired source changes. Never silently trust a changed file.
-        if (useCache && canRetry && before && after && !stable) return runChecked(false, false);
+        if ((useCache || useResume) && canRetry && before && after && !stable) {
+          const fresh = await runChecked(false, false, false);
+          if (useResume) {
+            const reads = Array.isArray(fresh.readTimings) ? fresh.readTimings : [];
+            const unsaved = reads.filter(function (item) { return item.succeeded; }).map(function (item) { return item.chunkId; });
+            fresh.readResume = { enabled: true, reason: 'source_changed', resumed: 0, saved: 0, unsaved: unsaved.length, unsavedChunkIds: unsaved,
+              failedChunkIds: reads.filter(function (item) { return !item.succeeded; }).map(function (item) { return item.chunkId; }) };
+          }
+          return fresh;
+        }
+        if (checkpointTimings) {
+          result.readTimings = checkpointTimings;
+          result.readResume = { enabled: true, sourceAvailable: !!before, resumed: checkpointHits.filter(Boolean).length,
+            saved: checkpointsSaved, unsaved: unsavedChunkIds.length, unsavedChunkIds: unsavedChunkIds,
+            failedChunkIds: checkpointTimings.filter(function (item) { return !item.succeeded; }).map(function (item) { return item.chunkId; }) };
+          if (result.timings) result.timings.read = checkpointElapsed;
+        }
         const candidate = result.__verificationCandidate;
         if (result.ok === true && candidate && typeof candidate.note === 'string' && Array.isArray(candidate.issues) && candidate.checks && candidate.evidence) {
           const localAfter = sourceProof.readLocalInput(args.input.trim());
@@ -213,7 +265,7 @@ function readingTool(engine, defaults, registry) {
           if (typeof result.note === 'string') result.note = quality.decorateNote(result.note, { sourceStatus: 'unknown', passed: false, issues: result.qualityIssues, fmProfile: options.frontmatter });
         }
         if (useCache && !(exec.signal && exec.signal.aborted) && stable && result.qualityPassed && Array.isArray(result.__cacheReads)) {
-          for (let i = 0; i < keys.length; i++) if (keys[i] && !hits[i] && readCache.portable(result.__cacheReads[i], prepared.tempDir)) readCache.write(options.tempDir, keys[i], result.__cacheReads[i]);
+          for (let i = 0; i < keys.length; i++) if (keys[i] && !cacheHits[i] && readCache.portable(result.__cacheReads[i], prepared.tempDir)) readCache.write(options.tempDir, keys[i], result.__cacheReads[i]);
         }
         delete result.__verificationCandidate;
         delete result.__cacheReads;
@@ -224,7 +276,7 @@ function readingTool(engine, defaults, registry) {
         }
         return result;
       }
-      return runChecked(options.readCache, true);
+      return runChecked(options.readCache, true, options.resumeReads);
     }
   };
 }

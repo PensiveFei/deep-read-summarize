@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- 精读块临时失败时默认重试一次；可选择启用分块续跑，在中断或部分失败后复用匹配来源、提示和模型身份的已完成块。续跑记录含本地明文，默认关闭，命中后仍执行原文核验。
 - `npm run test:coverage`：用 Node 自带的 lcov reporter 统计覆盖率并卡门槛（行 86% / 分支 83% / 函数 88%，单文件行下限 40%）。此前 tests/ 有四千多行用例，但没有任何东西阻止新增文件零测试地进来——case 数是厚度，不是覆盖比例。不引入 c8/nyc，避免为一行阈值多一条依赖链；CI 只在 ubuntu 的 Node 22 上卡，`publish.yml` 的发布门改用这一条。门槛自己的解析与判定有单元测试（`tests/coverage-gate.test.js`）。
 - 真实模型金丝雀 `npm run test:canary`（`scripts/model-canary.js` + 每晚 `model-canary.yml`）：把笔记契约（七节模板、第 4 节逐字引文、篇幅下限）连同固定素材喂给真实模型，再用 `lib/quality.js` 判产物。此前所有门禁都不调用模型，所以「上游模型换版本后产物还合不合格」没有任何自动化判据。判据用结构 + 引文而非逐字比对（模型输出非确定）；调用次数、单次输出与累计 token 都是硬上限。提示词是 `lib/workflow-script.txt` 里那套契约的镜像，与 `SKILL.md` 模板块的一致性由单测钉住。素材从 1 篇扩到 3 篇（普通说明文 / 表格密集 / 中英混排）：单篇素材只能给一个平均值，抓不到「某类输入退化」——表格与术语的处理恰恰最容易在模型换版本时先坏。
 - 端到端检查 `npm run test:e2e:dsh`（`scripts/e2e-dsh.js` + 手动 `e2e-dsh.yml`）：在隔离的 DSH headless profile 里装本包，用真实模型跑一次精读，断言笔记真的落盘并通过结构检查。这条覆盖的是装配——插件能否被 mount、工具能否注册、模型会不会调用它——也就是 0.3.3「入口没导出 apply()、宿主起不来」那类回归唯一能被自动发现的地方。工作区放在系统临时目录：Windows 的 workspace-write 沙箱要给工作区目录改 DACL，仓库目录属于另一个 SID 时会被拒（Win32 5）。
@@ -14,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- 转写自举出来的环境在「首次解码」时崩掉：`faster-whisper 1.2.1` 的 `audio.py` 会调 `av.open(..., metadata_errors="ignore")`，而 **PyAV 19 移除了这个参数**（`faster-whisper` 只声明 `av>=11`，没有上界）。所以新建环境装到 av 19 时：建 venv、导入、下载模型全部正常，**只有真正开始转写才 TypeError**（`open() got an unexpected keyword argument 'metadata_errors'`）。现在安装依赖时把 PyAV 约束到 `av>=12,<19`，镜像与直连两条路径都带这个约束；导入 faster-whisper 之前再做一次版本预检，低于 12 或大于等于 19 都触发一次重装——已经有坏环境的用户下次运行会自动修好，不需要手删缓存。
+- 转写首次解码时崩掉：`faster-whisper 1.2.1` 调用的 `metadata_errors` 参数在 PyAV 12 起可用，PyAV 19 又将其移除；但该库只声明 `av>=11`。现在安装时限制 `av>=12,<19`，并在导入之前检查已有环境；不兼容时通过 uv 修复一次，镜像失败则尝试直连 PyPI。未安装 uv 时会提示安装，不会声称已修复。
 
 ## [0.6.6] — 2026-11-19
 

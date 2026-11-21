@@ -35,7 +35,7 @@ Markdown 笔记
 
 `sourceStatus` 区分 `complete`（取得文本与用户本次提供的本地纯文本逐字节一致）、`partial`（已知缺口）和 `unknown`（完整性未确认）。视频来源保持 `unknown`，除非已知仅有简介或其他部分内容；字幕或转写本身不能证明覆盖音频。兼容字段 `sourceComplete` 仅在 `complete` 时为 true。`citationVerification.status` 为 `verified`、`mismatch`、`unverified` 或 `not_applicable`；`unknown` 来源上的其他质量检查可以通过，但不能当作原始资料完整的证明。详见 [质量基准](../benchmarks/quality/README.md)。
 
-直接调用 workflow 的 options 必须类型正确：`minWords` 为 1–100000 的整数，`maxChunks` 为正整数（大于 12 仍夹到 12），`readConcurrency` 为 1–12 的整数，`maxRetries` 为 0–3 的整数；非法值和未知键在启动时 FATAL。插件 profile 的 config 则逐项告警并回退默认值，避免阻止宿主启动。
+直接调用 workflow 的 options 必须类型正确：`minWords` 为 1–100000 的整数，`maxChunks` 为正整数（大于 12 仍夹到 12），`readConcurrency` 为 1–12 的整数，`maxRetries` 和 `readRetries` 为 0–3 的整数；非法值和未知键在启动时 FATAL。插件 profile 的 config 则逐项告警并回退默认值，避免阻止宿主启动。
 
 `lengthMode` 可选 `standard`（默认）或 `concise`。单独设置 `concise` 时，默认最低计数为 500，`fastMode` 为 true；同一次调用或配置中显式设置的 `minWords` 和 `fastMode` 优先。插件工具单次调用显式选择模式时，会重新应用该模式的默认值，再应用本次显式覆盖；未指定模式时沿用 profile 的设置。简洁模式不是最大字数限制，也不会跳过原文核验。下面示例显式列出标准档的 `minWords` 和 `fastMode`，切换模式时若要使用预设，请移除这两个显式值。
 
@@ -77,6 +77,8 @@ workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema �
     "fastMode": false,        // true 时跳过 5-7 节，速度快一些
     "maxChunks": 4,           // 分块上限，1-12
     "readConcurrency": 3,     // 精读和分块核验的并发上限，1-12
+    "readRetries": 1,         // 单个精读块失败后的额外重试次数，0-3
+    "resumeReads": false,     // 插件工具入口：保存完成的块以便中断后续跑
     "parallelQuality": false, // 显式启用并行原文核验；默认使用原有核验路径
     "readCache": false,        // 仅插件工具支持：启用跨次精读缓存
     "readCacheIdentity": "",   // 启用缓存时必填：provider/固定模型版本/影响输出的设置
@@ -140,6 +142,8 @@ workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema �
 
 **转写工具链**：脚本用 `uv` 创建 **Python 3.12** 环境，从清华镜像安装 **`faster-whisper==1.2.1`**，通过 `HF_ENDPOINT=https://hf-mirror.com` 下载并缓存模型。健康的缓存环境直接运行，不要求 uv 仍在 PATH，也不再启动单独的 Python 导入探测。实际解释器和依赖版本记录在缓存目录的 `runtime.json`；Python 补丁版本、uv 和传递依赖未全部锁定，不能据此声称环境逐字一致。PyAV 可直接解码音频，无需单独 ffmpeg。三平台使用同一条命令 `node scripts/transcribe.js --audio <音频> --out <txt>`，默认 CPU；`options.device: "auto"` 可尝试自备的 CUDA，失败回退 CPU。缓存目录：Windows `%LOCALAPPDATA%\deep-read-summarize`、macOS `~/Library/Caches/deep-read-summarize`、Linux `$XDG_CACHE_HOME/deep-read-summarize`（未设置时用 `~/.cache`）。创建 Python 环境默认先用镜像，失败再直连 GitHub；`DRS_UV_PYTHON_MIRROR` 可覆盖镜像，空字符串表示直连。
 
+当前转写库需要 `av>=12,<19`。已有环境中 PyAV 缺失或版本不兼容时会尝试用 uv 修复；若找不到 uv，会提示安装，不需要删除模型缓存。
+
 > ⚠️ **首次转写会先下载模型（small 约 484MB，走 hf-mirror，非 GitHub），可能需要几分钟**。之后复用模型文件；新音频仍需完整推理。同一音频命中经过校验的逐字稿缓存时，才会跳过推理。**只有「无字幕」视频才会触发转写**（有字幕的视频直接用字幕，不触发、不下载）。
 
 **逐字稿缓存与线程**：`options.transcriptCache` 默认开启。缓存键包含音频 SHA-256、受管理的本地模型快照、已安装依赖及解码配置；存储真实分段和起止时间，切换时间戳展示不必重转写。更改内容、配置或本地模型/依赖会失效；自定义本地模型目录、无法确认环境、损坏和过期记录均跳过缓存。缓存复用本地已有快照，不在线探测模型上游是否更新。逐字稿保存在上述缓存根目录的 `transcripts-v1`，单条上限 8 MiB、总量上限 128 MiB、有效期 30 天；清理在写入时执行。它不保存音频，也不会跳过后续精读与原文核验。
@@ -179,6 +183,8 @@ node scripts/transcribe.js --clear-cache
 - `readConcurrency` 控制精读并发，不改变分块或质量核验的要求；启用 `parallelQuality` 时也限制核验任务数，默认为 3。实际分块数至少为 4 且宿主支持时，可尝试设为 4，比较总耗时、限流及失败情况；并发越高不一定越快。
 
 **跨次精读缓存**默认关闭，仅 `deep_read_summarize` 插件工具入口支持，裸 workflow 不启用。设 `readCache: true` 时必须同时设置 `readCacheIdentity`，包含供应商、固定模型版本和所有影响输出的设置；宿主无法验证该身份，模型或设置变化时必须更换。缓存按原文内容、分块提示及身份匹配，仅在质量检查通过后写入；命中后仍执行独立原文核验。`readTimings` 的 `cacheHit` 表示是否命中。缓存是明文，位于 `tempDir/.read-cache-v1`，可能包含原文摘录；超过 30 天、64 MiB 总量或 1 MiB 单条限制会被清理或跳过，不需要时可删除该目录。
+
+**失败块重试与续跑**：精读代理返回空结果或一般性错误时，单块最多额外重试 `readRetries` 次（默认 1），致命错误或取消直接终止。此设置与成稿质量修订的 `maxRetries` 相互独立。设置 `resumeReads: true` 和真实的 `readCacheIdentity` 后，插件工具将每个完成的块立即保存到 `tempDir/.read-checkpoints-v1`；相同输入再次调用时先重新获取原文，只有原文字节、完整分块提示和模型身份都匹配才复用。获取过程、未完成块、成稿和质量核验仍会执行。不同于质量通过后写入的精读缓存，这些记录是尚未经过整篇质量核验的中间结果，命中不表示质量通过。记录包含明文，沿用单条 1 MiB、总量 64 MiB、30 天限制；可删除该目录。`readResume` 报告 `resumed`、`saved`、`unsaved` 和 `failedChunkIds`，`readTimings` 报告每块尝试次数与是否从续跑记录复用；原文不可读取或记录不可保存时正常完成但不能保证续跑。裸 workflow 没有持久化能力，只支持块内重试。
 
 默认保持 small/int8、既有解码设置、篇幅与独立原文核验。逐字稿缓存主要加速重复处理，新视频可用线程配置和分阶段计时调优；常驻 ASR 模型和批量推理仍需独立基准，不自动启用。
 

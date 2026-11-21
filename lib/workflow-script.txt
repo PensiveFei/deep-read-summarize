@@ -7,7 +7,7 @@
 function yamlStr(v) { return JSON.stringify(v == null ? "" : String(v)); }
 
 function fatalWorkflowError(error) {
-  return !!error && (error.fatal === true || error.code === "UNSUPPORTED_SCHEMA" ||
+  return !!error && (error.fatal === true || error.name === "AbortError" || error.code === "ABORT_ERR" || error.code === "UNSUPPORTED_SCHEMA" ||
     /\[FATAL\]|\bUNSUPPORTED_SCHEMA\b/.test(String(error.message || error)));
 }
 const workflowStartedAt = Date.now();
@@ -276,20 +276,35 @@ if (args && args.__cachePrepare) return timedResult({
 
 const reads = new Array(chunkPrompts.length);
 readTimings = chunkPlan.map(function (chunk) {
-  return { chunkId: chunk.id, startLine: chunk.startLine, endLine: chunk.endLine, elapsedMs: 0, succeeded: false, cacheHit: false };
+  return { chunkId: chunk.id, startLine: chunk.startLine, endLine: chunk.endLine, elapsedMs: 0, succeeded: false, cacheHit: false, attempts: 0 };
 });
-let nextRead = 0;
+const readOnlyIndex = args && Number.isInteger(args.__readOnlyIndex) ? args.__readOnlyIndex : null;
+if (readOnlyIndex !== null && (!cacheResume || readOnlyIndex < 0 || readOnlyIndex >= chunkPrompts.length)) throw new Error("[FATAL] invalid read-only chunk");
+let nextRead = readOnlyIndex === null ? 0 : readOnlyIndex;
+const readEnd = readOnlyIndex === null ? chunkPrompts.length : readOnlyIndex + 1;
 let stopReading = false;
 const readWorkers = [];
-for (let worker = 0; worker < Math.min(readConcurrency, chunkPrompts.length); worker++) {
+for (let worker = 0; worker < Math.min(readConcurrency, readEnd - nextRead); worker++) {
   readWorkers.push(async function () {
-    while (!stopReading && nextRead < chunkPrompts.length) {
+    while (!stopReading && nextRead < readEnd) {
       const index = nextRead++;
       const chunkStartedAt = Date.now();
       try {
         const hit = cacheResume && Array.isArray(cacheResume.hits) && Array.isArray(cacheResume.prompts) && cacheResume.prompts[index] === chunkPrompts[index] ? cacheResume.hits[index] : null;
         if (typeof hit === "string" && hit.trim()) { reads[index] = hit; readTimings[index].cacheHit = true; }
-        else reads[index] = await agent(chunkPrompts[index], { label: "精读块", phase: "并行精读" });
+        else if (cacheResume && Array.isArray(cacheResume.settled) && cacheResume.settled[index] === true) reads[index] = "";
+        else for (let attempt = 0; attempt <= options.readRetries; attempt++) {
+          if (stopReading) break;
+          readTimings[index].attempts++;
+          try { reads[index] = await agent(chunkPrompts[index], { label: "精读块", phase: "并行精读" }); }
+          catch (error) {
+            if (fatalWorkflowError(error)) throw error;
+            reads[index] = "";
+          }
+          if (typeof reads[index] === "string" && reads[index].trim()) break;
+          reads[index] = "";
+          if (attempt < options.readRetries) log("精读块 " + chunkPlan[index].id + " 失败，正在重试（" + (attempt + 1) + "/" + options.readRetries + "）");
+        }
       }
       catch (error) {
         if (fatalWorkflowError(error)) { stopReading = true; throw error; }
@@ -303,6 +318,8 @@ for (let worker = 0; worker < Math.min(readConcurrency, chunkPrompts.length); wo
   });
 }
 await parallel(readWorkers);
+if (readOnlyIndex !== null) return timedResult({ __readOnly: true, index: readOnlyIndex,
+  note: typeof reads[readOnlyIndex] === "string" ? reads[readOnlyIndex] : "", readTiming: readTimings[readOnlyIndex] });
 const validReads = reads.filter(function (r) { return typeof r === "string" && r.trim().length > 0; });
 const readEvidence = chunkPlan.map(function (chunk, i) {
   return { chunkId: chunk.id, topic: chunk.topic, startLine: chunk.startLine, endLine: chunk.endLine,

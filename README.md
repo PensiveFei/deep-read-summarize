@@ -113,6 +113,8 @@ https://arxiv.org/abs/2307.09042
 | `fastMode` | `false` | 开启后省略批判性分析、个人应用和延伸阅读章节 |
 | `maxChunks` | `4` | 分块数量上限，最大为 12；不是并发数 |
 | `readConcurrency` | `3` | 精读并发上限；并发更高不一定更快 |
+| `readRetries` | `1` | 单个精读块失败时的额外重试次数，范围 0–3 |
+| `resumeReads` | `false` | 保存已完成的精读块，以便失败或中断后续跑；仅插件工具入口支持 |
 | `maxRetries` | `0` | 未通过质量检查时的修订次数；成稿成功后默认执行一次核验，不做修订 |
 | `outputDir` | `./output` | 建议的笔记输出目录，由主代理完成写入 |
 | `requireCitations` | `true` | 要求关键引用具备可核验的来源信息 |
@@ -127,6 +129,8 @@ https://arxiv.org/abs/2307.09042
 直接调用时可用 `options: { "lengthMode": "concise" }`。同一次调用显式提供的 `minWords`、`fastMode` 优先于预设；例如加上 `"fastMode": false` 可保留完整章节。简洁模式尽量接近最低篇幅，但不限制最大字数。
 
 开启 `readCache` 时，还必须提供 `readCacheIdentity`，写明供应商、固定模型版本及影响输出的设置；这些信息变化时需更换身份。该身份由调用者提供，宿主无法自动验证。缓存为本地明文，可能包含原文摘录；命中后仍会执行独立原文核验。
+
+需要断点续跑时，使用同一输入和配置开启 `options: { "resumeReads": true, "readCacheIdentity": "供应商/固定模型版本;输出设置" }`，其中身份内容须替换成实际使用的模型及设置。每个精读块成功后即单独保存；中断或部分失败后用相同设置再次调用，只重跑没有匹配记录的块。每次仍会重新获取原文，并在成稿后执行独立核验；原文、分块提示或模型身份不同就不会复用。记录默认关闭，明文保存在 `tempDir/.read-checkpoints-v1`，可能包含原文摘录，可删除该目录清理。`readResume` 会报告复用、保存和未能保存的数量；未保存的块下次需要重跑。裸 workflow 只支持块内重试，不支持跨次续跑。
 
 其他选项包括 `frontmatter`（`obsidian`、`generic`、`minimal`）和 `tempDir`。高级选项、取值范围、转写缓存和自定义解析器可参考[完整配置与技术参考](https://github.com/PensiveFei/deep-read-summarize/blob/main/docs/README-reference.zh.md)。
 
