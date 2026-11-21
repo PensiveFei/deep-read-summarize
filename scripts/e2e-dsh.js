@@ -26,7 +26,10 @@ const { spawnSync } = require('node:child_process');
 const { checkNoteStructure } = require('../lib/quality');
 
 const ROOT = path.join(__dirname, '..');
-const SOURCE = path.join(ROOT, 'tests', 'fixtures', 'canary', 'source.md');
+// E2E 用它自己的素材，不复用金丝雀的：金丝雀的素材目录改过一次结构（source.md →
+// cases/urban-heat.md），共用路径的 E2E 就直接崩在 copyFileSync 上。两条检查的素材
+// 生命周期不同，各自持有、互不牵连。
+const SOURCE = path.join(ROOT, 'tests', 'fixtures', 'e2e', 'source.md');
 const ARTIFACTS = path.join(ROOT, 'e2e-artifacts', 'e2e-dsh');
 // 工作区不放仓库里：Windows 上 workspace-write 沙箱要给工作区目录改 DACL，
 // 而本机 E:\DSH 下的目录属于另一个 SID，改 DACL 会被拒（Win32 5，实测踩过）。
@@ -142,6 +145,9 @@ function main() {
   const problems = [];
   if (!dsh) problems.push('找不到 dsh：先 `npm i -g @deepseek-ai/dsh`（engines 要求 Node >= 24.9）');
   if (!pnpm) problems.push('找不到 pnpm：dsh plugin add 会转发给 pnpm');
+  // 素材缺失必须在**发请求前**报出来：上次它是在 copyFileSync 时以 ENOENT 崩的，
+  // 前面的 dsh / 插件安装都已经白跑了一遍（CI 上就是几十秒 + 一次失败 run）。
+  if (!fs.existsSync(SOURCE)) problems.push('缺少 E2E 素材：' + path.relative(ROOT, SOURCE));
   if (!dryRun && !process.env.DEEPSEEK_API_KEY) problems.push('缺少 DEEPSEEK_API_KEY');
 
   console.log('e2e-dsh: model=' + MODEL + ' timeout=' + Math.round(TIMEOUT_MS / 1000) + 's');
@@ -221,4 +227,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { PATCH, TASK, newestNote, plan };
+module.exports = { PATCH, TASK, SOURCE, newestNote, plan };

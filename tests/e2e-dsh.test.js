@@ -9,7 +9,17 @@ const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
 
-const { PATCH, TASK, newestNote, plan } = require('../scripts/e2e-dsh');
+const { PATCH, TASK, SOURCE, newestNote, plan } = require('../scripts/e2e-dsh');
+
+// 素材路径曾经是「共用金丝雀的」：金丝雀把 source.md 移进 cases/ 之后，E2E 直接崩在
+// copyFileSync 的 ENOENT 上，而且是在装完 dsh、装完插件之后才崩。素材各自持有 + 这条断言
+// 就是为了让这类耦合在本地就红，而不是在 CI 里白跑一轮。
+test('the E2E fixture exists, lives under fixtures/e2e, and can fill a 300-word note', () => {
+  assert.ok(fs.existsSync(SOURCE), 'missing fixture: ' + SOURCE);
+  assert.ok(SOURCE.replace(/\\/g, '/').includes('tests/fixtures/e2e/'), 'fixture must not be shared with the canary: ' + SOURCE);
+  const text = fs.readFileSync(SOURCE, 'utf8');
+  assert.ok(text.length >= 200, 'fixture too short for MIN_WORDS=300: ' + text.length);
+});
 
 test('patch overrides only the model, keeping the deepseek-official provider', () => {
   const lines = PATCH.trim().split('\n');
