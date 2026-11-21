@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- `npm run test:coverage`：用 Node 自带的 lcov reporter 统计覆盖率并卡门槛（行 86% / 分支 83% / 函数 88%，单文件行下限 40%）。此前 tests/ 有四千多行用例，但没有任何东西阻止新增文件零测试地进来——case 数是厚度，不是覆盖比例。不引入 c8/nyc，避免为一行阈值多一条依赖链；CI 只在 ubuntu 的 Node 22 上卡，`publish.yml` 的发布门改用这一条。门槛自己的解析与判定有单元测试（`tests/coverage-gate.test.js`）。
+
 ## [0.6.6] — 2026-11-19
 
 修复关键引用核验把 Markdown 引用块里的署名误算为引文的问题。

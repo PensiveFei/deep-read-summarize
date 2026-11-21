@@ -26,6 +26,7 @@ git switch -c fix/short-description
 ```bash
 npm test
 npm run test:node
+npm run test:coverage
 npm run lint
 npm run security
 npm run validate
@@ -34,6 +35,7 @@ node scripts/transcribe.js --self-check
 
 - `npm test`：fixture 驱动的工作流测试。
 - `npm run test:node`：Node 原生测试，包括入口、Cordis 契约与发布护栏。
+- `npm run test:coverage`：同一套 node:test 用例 + 覆盖率门槛（行 86% / 分支 83% / 函数 88%，单文件行下限 40%）。需要 Node >= 22；CI 只在 ubuntu 的 Node 22 上卡这一条，因为平台分支在不同 OS 上执行到的代码不同。门槛是地板不是目标：CI 每次会打印实测值，稳定后再往上抬，理由和判据一起写进 `scripts/coverage.js`。
 - `npm run lint`：JavaScript 语法、BOM、换行和空白检查。
 - `npm run security`：常见密钥及用户路径扫描，不能替代人工脱敏。
 - `npm run validate`：快速验证及安全检查。

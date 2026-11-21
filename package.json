@@ -22,6 +22,7 @@
     "skills",
     "scripts",
     "!scripts/release.js",
+    "!scripts/coverage.js",
     "benchmarks/quality",
     "docs/RELEASE.md",
     "docs/ASR_BENCHMARK.md",
@@ -38,6 +39,7 @@
     "validate": "node tests/quick_validate.js && node scripts/security-check.js",
     "security": "node scripts/security-check.js",
     "test:node": "node --test",
+    "test:coverage": "node scripts/coverage.js",
     "benchmark:quality": "node benchmarks/quality/score.js",
     "release": "node scripts/release.js",
     "prepublishOnly": "node tests/run-tests.js && node --test && node scripts/lint.js && node scripts/security-check.js"

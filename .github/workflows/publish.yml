@@ -183,11 +183,11 @@ jobs:
         if: steps.published.outputs.state == 'new'
         run: npm ci --ignore-scripts
 
-      - name: Release gate (tests, lint, security)
+      - name: Release gate (tests, coverage, lint, security)
         if: steps.published.outputs.state == 'new'
         run: |
           npm test
-          npm run test:node
+          npm run test:coverage
           npm run lint
           npm run security
 
