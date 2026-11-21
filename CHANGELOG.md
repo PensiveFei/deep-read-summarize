@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
-- 转写自举出来的环境在「首次解码」时崩掉：`faster-whisper 1.2.1` 只声明 `av>=11`，但它的 `audio.py` 调了 `av.open(..., metadata_errors="ignore")`，而那个参数是 PyAV 12 才有的。装到 av 11 时建环境、导入都正常，只有真正开始转写才 TypeError（`open() got an unexpected keyword argument 'metadata_errors'`）。现在安装时显式带上 `av>=12`；并且在导入 faster-whisper 之前检查已装的 PyAV 主版本，低于 12 就触发一次重装——已经有坏环境的用户下次运行会自动修好，不需要手动删缓存。镜像装不上时改用 PyPI 直连重试（镜像是加速用的，不是唯一来源）。
+- 转写自举出来的环境在「首次解码」时崩掉：`faster-whisper 1.2.1` 的 `audio.py` 会调 `av.open(..., metadata_errors="ignore")`，而 **PyAV 19 移除了这个参数**（`faster-whisper` 只声明 `av>=11`，没有上界）。所以新建环境装到 av 19 时：建 venv、导入、下载模型全部正常，**只有真正开始转写才 TypeError**（`open() got an unexpected keyword argument 'metadata_errors'`）。现在安装依赖时把 PyAV 约束到 `av>=12,<19`，镜像与直连两条路径都带这个约束；导入 faster-whisper 之前再做一次版本预检，低于 12 或大于等于 19 都触发一次重装——已经有坏环境的用户下次运行会自动修好，不需要手删缓存。
 
 ## [0.6.6] — 2026-11-19
 
