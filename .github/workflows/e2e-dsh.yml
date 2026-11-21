@@ -1,0 +1,74 @@
+name: E2E (DSH headless)
+
+# 真的端到端：装 DSH → 建隔离 profile → 把本包装进去 → 用真实模型跑一次精读 → 断言落盘笔记。
+# 它回答的是金丝雀回答不了的问题：插件能不能被宿主 mount、工具能不能注册、
+# 模型会不会去调用它、workflow 脚本在真实宿主里能不能跑完。
+#
+# 只手动触发：一次要装 670 个包（约 1.1 GB）、跑 2–5 分钟、花几毛钱，
+# 而且它依赖宿主实现细节，天然比金丝雀脆。发布前跑一次，平时不要跑。
+#
+# 没有 DEEPSEEK_API_KEY 时直接失败（不是跳过）：这是手动触发的流程，
+# 静默跳过只会让人以为「发布前跑过了」。
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: '模型 id（留空用仓库变量/默认 deepseek-v4-pro）'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-dsh
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # dsh 的 engines 要求 Node >= 24.9；用 22 只会装出 EBADENGINE 警告然后在启动时炸。
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+
+      - name: Check the key is present
+        env:
+          KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error title=missing secret::手动触发的 E2E 需要 DEEPSEEK_API_KEY；不会跳过，因为跳过等于没测。"
+            exit 1
+          fi
+
+      - name: Install project dependencies
+        run: npm ci --ignore-scripts
+
+      # dsh plugin add 会转发给 pnpm，所以 pnpm 必须在 PATH 上。
+      - name: Install dsh and pnpm
+        run: |
+          npm install --global pnpm@11
+          npm install --global @deepseek-ai/dsh@0.2.2-rc.5
+          dsh --version
+          pnpm --version
+
+      - name: E2E (real model, isolated DSH home)
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          E2E_MODEL: ${{ inputs.model || vars.E2E_MODEL || 'deepseek-v4-pro' }}
+          E2E_TIMEOUT_MS: '900000'
+        run: node scripts/e2e-dsh.js
+
+      - name: Upload the note and the event log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-dsh-artifacts
+          path: e2e-artifacts/e2e-dsh/
+          if-no-files-found: warn
+          retention-days: 14

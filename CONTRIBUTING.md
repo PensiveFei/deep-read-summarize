@@ -35,13 +35,28 @@ node scripts/transcribe.js --self-check
 
 - `npm test`：fixture 驱动的工作流测试。
 - `npm run test:node`：Node 原生测试，包括入口、Cordis 契约与发布护栏。
-- `npm run test:coverage`：同一套 node:test 用例 + 覆盖率门槛（行 86% / 分支 83% / 函数 88%，单文件行下限 40%）。需要 Node >= 22；CI 只在 ubuntu 的 Node 22 上卡这一条，因为平台分支在不同 OS 上执行到的代码不同。门槛是地板不是目标：CI 每次会打印实测值，稳定后再往上抬，理由和判据一起写进 `scripts/coverage.js`。
+- `npm run test:coverage`：同一套 node:test 用例 + 覆盖率门槛（行 86% / 分支 83% / 函数 88%，单文件行下限 40%）。需要 Node >= 22；CI 只在 ubuntu 的 Node 22 上卡这一条，因为平台分支在不同 OS 上执行到的代码不同。分母只算**会随包发布**的代码：`package.json` 的 `files` 里用 `!` 排除的维护者脚本（release / coverage / canary / e2e）不计入——它们只是 CLI 外壳，逻辑被抽成纯函数由单测覆盖、端到端由各自 workflow 跑；这份排除清单同时被单测检查是否指向真实文件。门槛是地板不是目标：CI 每次会打印实测值，稳定后再往上抬，理由和判据一起写进 `scripts/coverage.js`。
 - `npm run lint`：JavaScript 语法、BOM、换行和空白检查。
 - `npm run security`：常见密钥及用户路径扫描，不能替代人工脱敏。
 - `npm run validate`：快速验证及安全检查。
 - `--self-check`：转写平台路径自检，不安装 Python、不下载模型。
 
 修复缺陷请给最小回归用例；涉及宿主、转写或平台行为时，在 PR 写明实际覆盖和未验证部分。纯文档变更可说明测试不适用的原因，仍检查链接、YAML、换行和脱敏。
+
+## 真实模型检查
+
+上面那套门禁不调用模型，所以「模型换了版本之后产物还合不合格」它看不见。这部分由两条独立检查覆盖，它们都不在 PR 路径上：
+
+| 检查 | 跑什么 | 何时跑 | 成本 |
+|---|---|---|---|
+| 金丝雀 `npm run test:canary` | 插件提示词 → 真实模型 → 用 `lib/quality.js` 判结构/篇幅/引文 | 每晚 `model-canary.yml`，也可手动 | 每次 1–2 次调用，上限写在 workflow 里 |
+| 端到端 `npm run test:e2e:dsh` | 在隔离的 DSH headless profile 里装本包，真跑一次精读，断言落盘笔记 | 手动 `e2e-dsh.yml`（发布前） | 一次完整 workflow，分钟级 |
+
+两条都需要 `DEEPSEEK_API_KEY`。没有 secret 时 workflow 会打 warning 并在 run summary 里写明 **skipped**——**绿色不等于通过**，看到没有 artifact 的绿 run 要当成没测。
+
+- 金丝雀只调一次 API，判据是结构、篇幅与「第 4 节引文能否在原文里逐字找到」；它不判断事实正确性，也不覆盖 DSH 编排。
+- 端到端才覆盖装配（`apply()`、工具注册、workflow 脚本语义、重试）；它更慢更脆，所以不进 PR 路径。
+- 两条检查失败时先判断是模型漂移、提示词问题还是校验器过严，**不要直接放宽门槛**。
 
 ## 实现与提交规范
 

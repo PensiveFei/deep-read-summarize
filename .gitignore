@@ -37,3 +37,6 @@ desktop.ini
 # Coverage
 coverage/
 .nyc_output/
+
+# Real-model check artifacts (notes, reports, token usage)
+e2e-artifacts/

@@ -23,6 +23,8 @@
     "scripts",
     "!scripts/release.js",
     "!scripts/coverage.js",
+    "!scripts/model-canary.js",
+    "!scripts/e2e-dsh.js",
     "benchmarks/quality",
     "docs/RELEASE.md",
     "docs/ASR_BENCHMARK.md",
@@ -42,7 +44,11 @@
     "test:coverage": "node scripts/coverage.js",
     "benchmark:quality": "node benchmarks/quality/score.js",
     "release": "node scripts/release.js",
-    "prepublishOnly": "node tests/run-tests.js && node --test && node scripts/lint.js && node scripts/security-check.js"
+    "prepublishOnly": "node tests/run-tests.js && node --test && node scripts/lint.js && node scripts/security-check.js",
+    "test:canary": "node scripts/model-canary.js",
+    "test:canary:dry": "node scripts/model-canary.js --dry-run",
+    "test:e2e:dsh": "node scripts/e2e-dsh.js",
+    "test:e2e:dsh:dry": "node scripts/e2e-dsh.js --dry-run"
   },
   "dsh": {
     "bundle": {

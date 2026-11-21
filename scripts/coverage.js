@@ -45,6 +45,14 @@ const LIMITS = { lines: 86, branches: 83, functions: 88, fileLines: 40 };
 // 一个 6 行文件的 66% 说明不了任何事。总量门槛仍然覆盖它们。
 const MIN_FILE_LINES = 10;
 
+/** package.json 的 files 里以 `!` 开头的条目 = 不随包发布的维护者脚本，不计入覆盖率分母。 */
+function MAINTAINER_SCRIPTS() {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  return (pkg.files || [])
+    .filter(function (f) { return typeof f === 'string' && f.charAt(0) === '!'; })
+    .map(function (f) { return f.slice(1); });
+}
+
 function pct(hit, total) {
   return total ? (hit / total) * 100 : 100;
 }
@@ -100,10 +108,18 @@ function parseLcov(text) {
 }
 
 /** 逐条比对门槛。返回结构化结果，CLI 与测试共用同一份判定，避免两处逻辑漂移。 */
-function evaluate(records, limits) {
+function evaluate(records, limits, excludes) {
+  // 分母 = 「会随包发布的代码」。package.json 的 files 里用 `!` 排除的维护者脚本
+  // （release / coverage / model-canary / e2e-dsh）不计入：它们只是 CLI 外壳，
+  // 真逻辑被抽成纯函数由单测覆盖，端到端部分由各自 workflow 跑。
+  // 这样「排除」和「发布」是同一张清单：新加一个不问世的脚本必须显式排除，
+  // 忘了排除就会被算进分母，覆盖率自然掉下来——比另写一份白名单难作弊。
+  const skip = new Set((excludes || []).map(function (p) { return p.replace(/\\/g, '/').replace(/^\.\//, ''); }));
+  const counted = records.filter(function (r) { return !skip.has(r.file); });
+  const skipped = records.length - counted.length;
   const agg = { lf: 0, lh: 0, brf: 0, brh: 0, fnf: 0, fnh: 0 };
   const files = [];
-  for (const r of records) {
+  for (const r of counted) {
     agg.lf += r.lf;
     agg.lh += r.lh;
     agg.brf += r.brf;
@@ -138,7 +154,7 @@ function evaluate(records, limits) {
     }
   }
   files.sort(function (a, b) { return a.lines - b.lines; });
-  return { ok: failures.length === 0, aggregate, files, failures, aggregate_raw: agg };
+  return { ok: failures.length === 0, aggregate, files, failures, skipped: skipped, aggregate_raw: agg };
 }
 
 function die(message) {
@@ -179,12 +195,16 @@ function main() {
   }
   const records = parseLcov(fs.readFileSync(LCOV, 'utf8'));
   if (!records.length) die('lcov 里没有任何记录，测试可能一个源文件都没加载。');
-  const report = evaluate(records, LIMITS);
+  const excludes = MAINTAINER_SCRIPTS();
+  const report = evaluate(records, LIMITS, excludes);
   const a = report.aggregate;
   console.log('');
-  console.log('覆盖率（' + records.length + ' 个文件）：行 ' + a.lines.toFixed(2) + '%' +
+  console.log('覆盖率（' + (records.length - report.skipped) + ' 个文件）：行 ' + a.lines.toFixed(2) + '%' +
     ' / 分支 ' + a.branches.toFixed(2) + '%' +
     ' / 函数 ' + a.functions.toFixed(2) + '%');
+  if (excludes.length) {
+    console.log('不计入（按 package.json files 的 ! 条目，共 ' + report.skipped + ' 个）：' + excludes.join(', '));
+  }
   console.log('门槛：行 ' + LIMITS.lines + '% / 分支 ' + LIMITS.branches + '% / 函数 ' +
     LIMITS.functions + '% / 单文件行 ' + LIMITS.fileLines + '%');
   // 只把最低的 5 个列出来：这是债务可见性，不是失败判据。
@@ -204,6 +224,6 @@ function main() {
   console.log('Coverage OK: 门槛内（行 ' + a.lines.toFixed(2) + '%）');
 }
 
-module.exports = { parseLcov, evaluate, LIMITS, MIN_FILE_LINES };
+module.exports = { parseLcov, evaluate, MAINTAINER_SCRIPTS, LIMITS, MIN_FILE_LINES };
 
 if (require.main === module) main();
