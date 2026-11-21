@@ -156,6 +156,7 @@ cd deep-read-summarize
 npm ci
 npm test
 npm run test:node
+npm run test:coverage   # 覆盖率门槛，需 Node >= 22
 npm run lint
 npm run validate
 ```

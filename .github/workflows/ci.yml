@@ -36,6 +36,15 @@ jobs:
       - name: node:test suite
         run: npm run test:node
 
+      # 覆盖率门槛只在 ubuntu / Node 22 上卡一次：lcov reporter 需要 Node >= 22，
+      # 而平台分支（转写、路径、bash）在不同 OS 上执行到的代码不同——同一份阈值
+      # 去卡三个平台，结果不是「更严格」，而是 windows 永远红。
+      # 这一条是「新增代码有没有被测到」的唯一自动化判据；跑在 cross-platform 作业里
+      # 没有意义，所以只挂在 test 作业的 Node 22 上。
+      - name: Coverage gate (Node 22, ubuntu only)
+        if: matrix.node-version == 22
+        run: npm run test:coverage
+
       - name: Validate
         run: npm run validate
 
