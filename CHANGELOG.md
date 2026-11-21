@@ -5,17 +5,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Added
+## [0.6.7] — 2026-11-21
 
-- 精读块临时失败时默认重试一次；可选择启用分块续跑，在中断或部分失败后复用匹配来源、提示和模型身份的已完成块。续跑记录含本地明文，默认关闭，命中后仍执行原文核验。
-- `npm run test:coverage`：用 Node 自带的 lcov reporter 统计覆盖率并卡门槛（行 86% / 分支 83% / 函数 88%，单文件行下限 40%）。此前 tests/ 有四千多行用例，但没有任何东西阻止新增文件零测试地进来——case 数是厚度，不是覆盖比例。不引入 c8/nyc，避免为一行阈值多一条依赖链；CI 只在 ubuntu 的 Node 22 上卡，`publish.yml` 的发布门改用这一条。门槛自己的解析与判定有单元测试（`tests/coverage-gate.test.js`）。
-- 真实模型金丝雀 `npm run test:canary`（`scripts/model-canary.js` + 每晚 `model-canary.yml`）：把笔记契约（七节模板、第 4 节逐字引文、篇幅下限）连同固定素材喂给真实模型，再用 `lib/quality.js` 判产物。此前所有门禁都不调用模型，所以「上游模型换版本后产物还合不合格」没有任何自动化判据。判据用结构 + 引文而非逐字比对（模型输出非确定）；调用次数、单次输出与累计 token 都是硬上限。提示词是 `lib/workflow-script.txt` 里那套契约的镜像，与 `SKILL.md` 模板块的一致性由单测钉住。素材从 1 篇扩到 3 篇（普通说明文 / 表格密集 / 中英混排）：单篇素材只能给一个平均值，抓不到「某类输入退化」——表格与术语的处理恰恰最容易在模型换版本时先坏。
-- 端到端检查 `npm run test:e2e:dsh`（`scripts/e2e-dsh.js` + 手动 `e2e-dsh.yml`）：在隔离的 DSH headless profile 里装本包，用真实模型跑一次精读，断言笔记真的落盘并通过结构检查。这条覆盖的是装配——插件能否被 mount、工具能否注册、模型会不会调用它——也就是 0.3.3「入口没导出 apply()、宿主起不来」那类回归唯一能被自动发现的地方。工作区放在系统临时目录：Windows 的 workspace-write 沙箱要给工作区目录改 DACL，仓库目录属于另一个 SID 时会被拒（Win32 5）。
-- 转写链路的装配检查 `npm run test:asr`（`scripts/asr-check.js` + 手动 `asr-check.yml`）：uv 自举 → Python 3.12 → faster-whisper → small 模型 → 落盘 → 缓存，四个用例分别是「语音转写成功」「同一音频命中缓存且输出字节一致」「10 秒静音按设计失败且不留下空文件」「同一段语音转成 aac-in-mp4 后可解码」。此前转写是三平台同等支持里唯一没有任何自动化覆盖的一段——不补它，那句话只能靠人肉试；mp4 那条尤其重要，用户传的素材几乎都不是裸 wav。判据刻意不比对任何文字：转写质量由人听，这里只抓装配断没断。静音样本由纯 Node 生成（320KB 全零数组不值得进仓库），语音样本在 CI 里用 espeak-ng 合成、再由 ffmpeg 转封装成 mp4，所以不需要提交任何真实音视频。
+修复新安装环境的语音转写失败，并增加失败分块重试与续跑。
 
-### Fixed
+### 修复
 
-- 转写首次解码时崩掉：`faster-whisper 1.2.1` 调用的 `metadata_errors` 参数在 PyAV 12 起可用，PyAV 19 又将其移除；但该库只声明 `av>=11`。现在安装时限制 `av>=12,<19`，并在导入之前检查已有环境；不兼容时通过 uv 修复一次，镜像失败则尝试直连 PyPI。未安装 uv 时会提示安装，不会声称已修复。
+- 修复 faster-whisper 1.2.1 与 PyAV 19 不兼容导致所有音频首次解码失败。新装及修复环境时使用 `av>=12,<19`；已安装不兼容版本时会尝试通过 uv 修复，模型缓存无需删除。没有 uv 时会提示安装。
+
+### 新增
+
+- 精读块临时失败或返回空内容时，默认自动重试一次；可用 `readRetries` 设置 0–3 次。致命错误和取消不会被当成普通失败重试。
+- 插件工具可启用 `resumeReads`：逐块保存成功结果，中断或部分失败后，重新获取相同来源并只处理未完成的块。仅在原文字节、分块提示和用户提供的模型身份一致时复用，随后仍独立核验原文与引用。
+
+### 升级说明
+
+- 续跑默认关闭；启用时须填写 `readCacheIdentity`，包含供应商、固定模型版本和影响输出的设置。记录保存在 `tempDir/.read-checkpoints-v1`，是可能含原文摘录的本地明文，可删除该目录清理。裸 workflow 入口支持重试，不支持跨次续跑。
+- 重试用 `readRetries` 控制；原有 `maxRetries` 仍控制质量修订，两者相互独立。
+
+### 测试与维护
+
+- 新增覆盖率门槛、真实模型金丝雀、DSH 端到端检查和转写装配检查；转写检查覆盖语音、重复输入缓存、静音以及 MP4 容器。
+- GitHub Actions 使用固定版本标识，并由 Dependabot 维护更新。
+
+### 贡献者与致谢
+
+- @PensiveFei：维护与验证本次发布，包括 [PyAV 兼容修复](https://github.com/PensiveFei/deep-read-summarize/pull/21) 和转写检查。
+- @dependabot[bot]：维护 [GitHub Actions 依赖更新](https://github.com/PensiveFei/deep-read-summarize/pull/16)。
 
 ## [0.6.6] — 2026-11-19
 
