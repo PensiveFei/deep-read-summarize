@@ -106,6 +106,7 @@ for (const missing of [
     const installs = h.calls.filter(function (c) { return c.args[0] === 'pip'; });
     assert.equal(installs.length, 1);
     assert.ok(installs[0].args.includes('faster-whisper==' + transcribe.FASTER_WHISPER_VERSION));
+    assert.ok(installs[0].args.includes('av>=12,<19'), 'new and repaired environments must exclude incompatible PyAV');
     assert.equal(fs.readFileSync(h.out, 'utf8'), 'new result');
   });
 }
@@ -153,6 +154,7 @@ test('a failed installation is not followed by inference or success publication'
   assert.equal(h.calls.length, 3);
   const pips = h.calls.filter(function (c) { return c.args[0] === 'pip'; });
   assert.equal(pips.length, 2);
+  assert.ok(pips.every(function (call) { return call.args.includes('av>=12,<19'); }), 'both installation paths must keep the PyAV constraint');
   assert.ok(pips[0].args.indexOf('-i') >= 0, '第一次应走镜像');
   assert.equal(pips[1].args.indexOf('-i'), -1, '重试应直连，不再指定镜像');
   assert.equal(fs.existsSync(h.out), false);
@@ -182,7 +184,7 @@ test('a fresh environment bootstraps Python then dependencies without an import 
   // av>=12 必须显式带上：faster-whisper 1.2.1 只声明 av>=11，但它的 audio.py 用了
   // av 12 才有的 metadata_errors，装到 11 会在真正解码那一刻 TypeError。
   const pip = h.calls.filter(function (c) { return c.args[0] === 'pip'; })[0];
-  assert.ok(pip.args.indexOf('av>=12') >= 0, 'pip 安装参数里必须包含 av>=12：' + pip.args.join(' '));
+  assert.ok(pip.args.indexOf('av>=12,<19') >= 0, 'pip 安装参数里必须包含 av>=12,<19：' + pip.args.join(' '));
 });
 
 test('a failed venv attempt cannot reuse the partial interpreter it left behind', function (t) {
@@ -232,7 +234,13 @@ const python = findPython();
 const pythonOptions = { skip: !python && 'Python unavailable' };
 const stub = [
   'import os, sys, types, importlib.metadata as md, builtins',
-  'md.version = lambda name: os.environ.get("DRS_TEST_VERSION", "' + transcribe.FASTER_WHISPER_VERSION + '") if name == "faster-whisper" else "test-version"',
+  'def mock_version(name):',
+  '    if name == "faster-whisper": return os.environ.get("DRS_TEST_VERSION", "' + transcribe.FASTER_WHISPER_VERSION + '")',
+  '    if name == "av":',
+  '        if os.environ.get("DRS_TEST_AV_VERSION") == "missing": raise md.PackageNotFoundError(name)',
+  '        return os.environ.get("DRS_TEST_AV_VERSION", "18.0.0")',
+  '    return "test-version"',
+  'md.version = mock_version',
   'fake = types.ModuleType("faster_whisper")',
   'class Model:',
   '    def __init__(self, *args, **kwargs):',
@@ -274,6 +282,25 @@ test('the Python preflight reports only actual missing imports and version misma
   assert.deepEqual(JSON.parse(fs.readFileSync(mismatch.statusFile, 'utf8')), {
     code: transcribe.DEPENDENCY_VERSION_MISMATCH, reason: 'version-mismatch'
   });
+});
+
+test('Python preflight rejects missing or incompatible PyAV before loading a model', pythonOptions, function (t) {
+  for (const version of ['19.0.0', '20.1.0', '11.0.0', '10.0.0', 'invalid', 'missing']) {
+    const h = runner(t, { DRS_TEST_AV_VERSION: version });
+    const missing = version === 'missing';
+    assert.equal(h.result.status, missing ? transcribe.DEPENDENCY_MISSING : transcribe.DEPENDENCY_VERSION_MISMATCH, h.result.stderr);
+    assert.deepEqual(JSON.parse(fs.readFileSync(h.statusFile, 'utf8')), {
+      code: missing ? transcribe.DEPENDENCY_MISSING : transcribe.DEPENDENCY_VERSION_MISMATCH,
+      reason: missing ? 'missing-dependency' : 'version-mismatch'
+    });
+    assert.equal(fs.existsSync(h.runtime), false, 'incompatible dependencies must be rejected before inference');
+    assert.equal(fs.existsSync(h.out), false);
+  }
+  for (const version of ['12.0.0', '18.1.0']) {
+    const h = runner(t, { DRS_TEST_AV_VERSION: version });
+    assert.equal(h.result.status, 0, h.result.stderr);
+    assert.equal(fs.existsSync(h.statusFile), false);
+  }
 });
 
 test('ModuleNotFoundError raised during inference cannot request bootstrap', pythonOptions, function (t) {

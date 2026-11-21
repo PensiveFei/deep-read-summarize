@@ -26,6 +26,8 @@ const transcriptCache = require('../lib/transcript-cache');
 // 复用环境不强制更换解释器；实际 Python / 传递依赖版本记录在 runtime.json。
 const PY_VERSION = '3.12';
 const FASTER_WHISPER_VERSION = '1.2.1';
+// faster-whisper 1.2.1 passes metadata_errors to av.open; PyAV 19 removes it.
+const PYAV_REQUIREMENT = 'av>=12,<19';
 const DEPENDENCY_MISSING = 20;
 const DEPENDENCY_VERSION_MISMATCH = 21;
 const PYPI_MIRROR = 'https://pypi.tuna.tsinghua.edu.cn/simple';
@@ -237,18 +239,16 @@ const PY_RUNNER = [
   "        bootstrap_required(" + DEPENDENCY_MISSING + ", 'missing-dependency', 'faster-whisper is not installed')",
   "    if installed_version != expected_version:",
   "        bootstrap_required(" + DEPENDENCY_VERSION_MISMATCH + ", 'version-mismatch', 'faster-whisper %s requires %s' % (installed_version, expected_version))",
-  "",
-  "# PyAV：faster-whisper 1.2.1 只声明 av>=11，但它的 audio.py 传了 av 12 才有的",
-  "# metadata_errors。装到 av 11 时导入不会报错，等到真正解码才 TypeError——",
-  "# 所以在导入 faster_whisper 之前就判定，并让上层触发一次重装（安装时会带 av>=12）。",
-  "try:",
-  "    av_version = metadata.version('av')",
-  "    if int(av_version.split('.')[0]) < 12:",
-  "        bootstrap_required(" + DEPENDENCY_VERSION_MISMATCH + ", 'version-mismatch', 'PyAV %s lacks metadata_errors (needs av>=12)' % av_version)",
-  "except metadata.PackageNotFoundError:",
-  "    pass",
-  "except ValueError:",
-  "    pass",
+  "    try:",
+  "        av_version = metadata.version('av')",
+  "    except metadata.PackageNotFoundError:",
+  "        bootstrap_required(" + DEPENDENCY_MISSING + ", 'missing-dependency', 'PyAV is not installed')",
+  "    try:",
+  "        av_major = int(av_version.split('.')[0])",
+  "    except (ValueError, TypeError):",
+  "        av_major = -1",
+  "    if av_major < 12 or av_major >= 19:",
+  "        bootstrap_required(" + DEPENDENCY_VERSION_MISMATCH + ", 'version-mismatch', 'PyAV %s is incompatible; faster-whisper requires av>=12,<19' % av_version)",
   "",
   "try:",
   "    from faster_whisper import WhisperModel",
@@ -527,16 +527,13 @@ function main(argv) {
     // 只有导入缺失/明确版本不符才允许自举并重试一次，解码/CUDA/推理失败不重装。
     const result = spawnSync(py, [pyScript], { stdio: 'inherit', env: childEnv, shell: false });
     if (needsBootstrap(result, bootstrapStatus)) {
-      if (uv === null) throw new Error('需要安装 faster-whisper==' + FASTER_WHISPER_VERSION + '，但没有找到 uv。请先安装：' + uvInstallHint(c));
-      process.stdout.write('[transcribe] 安装 faster-whisper==' + FASTER_WHISPER_VERSION + '（清华镜像）…\n');
+      if (uv === null) throw new Error('需要安装 faster-whisper==' + FASTER_WHISPER_VERSION + ' 和 ' + PYAV_REQUIREMENT + '，但没有找到 uv。请先安装：' + uvInstallHint(c));
+      process.stdout.write('[transcribe] 安装 faster-whisper==' + FASTER_WHISPER_VERSION + ' 和 ' + PYAV_REQUIREMENT + '（清华镜像）…\n');
       const installStarted = Date.now();
-      // av>=12 是硬要求，尽管 faster-whisper 1.2.1 只声明 av>=11：
-      // 它的 audio.py 会调 av.open(..., metadata_errors="ignore")，那个参数是 av 12 才有的。
-      // 装到 av 11 时导入与建环境都正常，要等到真正解码才 TypeError——真实用户在
-      // 「首次转写」那一刻才撞上，排查成本最高。这里把它抬到安装期。
+      // 兼容范围必须同时用于镜像与直连；否则回退时可能再次装入 PyAV 19。
       const installArgs = function (mirror) {
         const base = ['pip', 'install', '--python', py,
-          'faster-whisper==' + FASTER_WHISPER_VERSION, 'av>=12'];
+          'faster-whisper==' + FASTER_WHISPER_VERSION, PYAV_REQUIREMENT];
         return mirror ? base.concat(['-i', PYPI_MIRROR]) : base;
       };
       try {
@@ -617,6 +614,7 @@ module.exports = {
   parseArgs: parseArgs,
   PY_VERSION: PY_VERSION,
   FASTER_WHISPER_VERSION: FASTER_WHISPER_VERSION,
+  PYAV_REQUIREMENT: PYAV_REQUIREMENT,
   DEPENDENCY_MISSING: DEPENDENCY_MISSING,
   DEPENDENCY_VERSION_MISMATCH: DEPENDENCY_VERSION_MISMATCH,
   needsBootstrap: needsBootstrap,
