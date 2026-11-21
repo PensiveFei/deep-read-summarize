@@ -1,0 +1,92 @@
+name: Model canary
+
+# 真实模型金丝雀：每晚用 DEEPSEEK_API_KEY 跑一次「提示词 → 真实模型 → 校验器」。
+# 它不覆盖 DSH 编排（分块/并行/重试），那条在 e2e-dsh.yml 里；这里只回答一个问题：
+# 上游模型变了之后，我们的提示词还能不能产出通过我们自己检查的笔记。
+#
+# 没有配置 secret 时不会静默变绿：会打 warning 并在 run summary 里写明 skipped。
+# 但 skipped 不等于通过——看到一个没有 artifact 的绿色 run，要当成「没测」。
+
+on:
+  schedule:
+    # 每天 03:17 UTC（北京时间 11:17），避开整点的排队高峰
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: '模型 id（留空用仓库变量/默认 deepseek-chat）'
+        required: false
+        default: ''
+      samples:
+        description: '同一素材跑几次（预算上限 CANARY_MAX_CALLS=2）'
+        required: false
+        default: '1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Decide whether a key is available
+        id: gate
+        env:
+          KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning title=canary skipped::DEEPSEEK_API_KEY 未配置，本次没有真实调用"
+            {
+              echo "### ⚠️ Model canary: skipped"
+              echo ""
+              echo "没有 \`DEEPSEEK_API_KEY\`，本次**没有**调用模型。绿色不等于通过。"
+              echo "配置 secret 后本任务才会真正跑：Settings → Secrets and variables → Actions → New repository secret。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dry run (prompt assembly, no network)
+        run: node scripts/model-canary.js --dry-run
+
+      # 先跑判定逻辑的单元测试：金丝雀自己坏了，跑真实模型也只会给出假结论。
+      - name: Canary self-tests
+        run: node --test tests/model-canary.test.js
+
+      - name: Canary (live model)
+        if: steps.gate.outputs.run == 'true'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          CANARY_MODEL: ${{ inputs.model || vars.CANARY_MODEL || 'deepseek-chat' }}
+          SAMPLES: ${{ inputs.samples || '1' }}
+          CANARY_MAX_CALLS: '2'
+          CANARY_MAX_TOKENS: '2048'
+          CANARY_MAX_TOTAL_TOKENS: '40000'
+          CANARY_MIN_WORDS: '400'
+        run: |
+          node scripts/model-canary.js --samples "${SAMPLES:-1}"
+        # 预算与模型都由环境变量控制，工作流里写死上限，避免「改一行就多花钱」。
+
+      - name: Upload the notes
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: model-canary-notes
+          path: e2e-artifacts/canary/
+          if-no-files-found: error
+          retention-days: 14
