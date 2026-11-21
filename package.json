@@ -25,6 +25,7 @@
     "!scripts/coverage.js",
     "!scripts/model-canary.js",
     "!scripts/e2e-dsh.js",
+    "!scripts/asr-check.js",
     "benchmarks/quality",
     "docs/RELEASE.md",
     "docs/ASR_BENCHMARK.md",
@@ -48,7 +49,8 @@
     "test:canary": "node scripts/model-canary.js",
     "test:canary:dry": "node scripts/model-canary.js --dry-run",
     "test:e2e:dsh": "node scripts/e2e-dsh.js",
-    "test:e2e:dsh:dry": "node scripts/e2e-dsh.js --dry-run"
+    "test:e2e:dsh:dry": "node scripts/e2e-dsh.js --dry-run",
+    "test:asr": "node scripts/asr-check.js"
   },
   "dsh": {
     "bundle": {

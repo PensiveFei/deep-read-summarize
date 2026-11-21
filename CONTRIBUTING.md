@@ -51,8 +51,9 @@ node scripts/transcribe.js --self-check
 |---|---|---|---|
 | 金丝雀 `npm run test:canary` | 插件提示词 → 真实模型 → 用 `lib/quality.js` 判结构/篇幅/引文 | 每晚 `model-canary.yml`，也可手动 | 每次 1–2 次调用，上限写在 workflow 里 |
 | 端到端 `npm run test:e2e:dsh` | 在隔离的 DSH headless profile 里装本包，真跑一次精读，断言落盘笔记 | 手动 `e2e-dsh.yml`（发布前） | 一次完整 workflow，分钟级 |
+| 转写装配 `npm run test:asr` | uv 自举 → Python 3.12 → faster-whisper → 模型 → 落盘 → 缓存；三个用例：语音转写成功、同一音频命中缓存且字节一致、10 秒静音按设计失败且不留空文件 | 手动 `asr-check.yml` | 首次装环境 + 484MB 模型，缓存后约 30s |
 
-两条都需要 `DEEPSEEK_API_KEY`。没有 secret 时 workflow 会打 warning 并在 run summary 里写明 **skipped**——**绿色不等于通过**，看到没有 artifact 的绿 run 要当成没测。
+前两条都需要 `DEEPSEEK_API_KEY`。没有 secret 时 workflow 会打 warning 并在 run summary 里写明 **skipped**——**绿色不等于通过**，看到没有 artifact 的绿 run 要当成没测。转写检查不需要 key，但需要 `uv` 与 `espeak-ng`（workflow 里会装）。
 
 - 金丝雀只调一次 API，判据是结构、篇幅与「第 4 节引文能否在原文里逐字找到」；它不判断事实正确性，也不覆盖 DSH 编排。
 - 端到端才覆盖装配（`apply()`、工具注册、workflow 脚本语义、重试）；它更慢更脆，所以不进 PR 路径。
