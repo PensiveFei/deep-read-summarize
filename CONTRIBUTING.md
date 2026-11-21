@@ -48,6 +48,7 @@ node scripts/transcribe.js --self-check
 - 一次 PR 聚焦一个目的，沿用现有 CommonJS 和代码风格，避免无关格式化或依赖升级。
 - 新解析器放入 `parsers/<name>.js`，或使用 `custom-parsers/`、显式配置的 `customParsersDir`。接口为 `{ name, types, buildPrompt(input, opts) }`，可带 `schema`；补 fixture 并检查内联后的工作流可用。
 - 修改工作流以源码和现有构建方式为准，不要把 `require('./workflow').script` 的最终产物当模板写回。
+- workflow 里的 action 按 commit SHA 锁定，并保留行尾 `# vX.Y.Z` 注释（`tests/workflow-pins.test.js` 会检查）。不要写可变 tag（`@v4`）——上游能在不改本仓库的情况下换掉代码，而这两条工作流分别握着 CI 与 `id-token: write` 的发布权。版本更新交给 Dependabot（`.github/dependabot.yml`，每月一次、同类合并成一个 PR），不要手改 SHA。
 - 提交标题用 `type(scope): 简述`，scope 可省略。常用类型：`fix`、`feat`、`docs`、`test`、`refactor`、`chore`。例如 `fix(parser): handle empty video transcript`。
 - PR 关联 Issue、填写环境/复现前后行为、列出实际检查命令与结果。用户可见变化补 `CHANGELOG.md`；版本号、tag 和发布由维护者统一处理。
 - 协作代码保留作者信息；squash 时核对作者，必要时按贡献者确认的身份保留 `Co-authored-by`，不猜测邮箱或真实姓名。

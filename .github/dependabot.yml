@@ -1,0 +1,43 @@
+# .github/dependabot.yml — 依赖与 Actions 版本更新
+#
+# 为什么需要它：ci.yml / publish.yml 里的 action 已按 commit SHA 锁定。
+# SHA 不会自己过期，但也不会自己变新——没有机器人，这里就会像 0.6.6 之前那样
+# 停在 checkout@v4 三个大版本，而且没人会注意到。Dependabot 在 SHA 模式下
+# 会同时改 SHA 和行尾的 `# vX.Y.Z` 注释，这也是「pin 住」和「停在旧版」能同时成立的原因。
+#
+# 为什么 npm 的 PR 上限是 0：直接依赖只有 acorn 一个且精确锁定，常规版本更新
+# 一年也出不了几个 PR，开着只会制造噪声。上限 0 只关掉**版本更新**，
+# **安全更新**不受这个上限限制——有公告时照样会开 PR。
+# 前提：仓库 Settings → Code security 里要打开 Dependabot alerts 与
+# Dependabot security updates（这两个是开关，不是文件，写不进这里）。
+#
+# 为什么 git 提交前缀分开写：actions 的 PR 用 `ci:`，npm 的用 `chore:`，
+# 一眼能从历史里区分「CI 保养」和「依赖变更」。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    # 同一个月内的 action 更新合成一个 PR：CI 一次跑完，review 一次就够。
+    groups:
+      github-actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+    # 新版本发布后先等一周：供应链投毒最常见的时间窗就是发布当天。
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "ci"
+    labels: ["dependencies"]
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+    labels: ["dependencies"]
