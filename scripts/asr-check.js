@@ -7,10 +7,11 @@
 // 听错数字与否定词，逐字比对会把「模型换版本」误报成「链路坏了」，而这个检查
 // 的目的是抓后者。质量由人听，不由这里断言。
 //
-// 三个用例：
+// 四个用例：
 //   1. 语音 → 退出码 0、输出文件非空（链路通）
 //   2. 同一音频再来一次 → metrics.cacheHit=true、输出字节一致（缓存真的复用，而不是重跑）
 //   3. 10 秒纯静音 → 非 0 退出、**不发布空文件**（fail closed，是设计而非缺陷）
+//   4. 同一段语音转成 aac-in-mp4 再转写 → 退出码 0、输出非空（容器解码分支；用户传的几乎都不是裸 wav）
 //
 // 为什么第三条用静音：它是唯一能稳定制造「0 字节转写」的输入。真实世界里对应的
 // 场景是无字幕纯音乐视频——如果不拦，用户会拿到一个 0 字节的「逐字稿」并被当成成功。
@@ -118,9 +119,10 @@ function main() {
   }
   if (dryRun) {
     console.log('\ndry-run：将依次运行');
-    console.log('  1. transcribe(--audio 语音)                      断言 退出 0 且输出非空');
-    console.log('  2. transcribe(同一音频)                          断言 cacheHit=true 且字节一致');
-    console.log('  3. transcribe(--audio 10s 静音)                  断言 非 0 且不留下空文件');
+    console.log('  1. transcribe(--audio 语音 wav)          断言 退出 0 且输出非空');
+    console.log('  2. transcribe(同一 wav)                  断言 cacheHit=true 且字节一致');
+    console.log('  3. transcribe(--audio 10s 静音)          断言 非 0 且不留下空文件');
+    console.log('  4. transcribe(--audio 由 wav 转出的 mp4) 断言 退出 0 且输出非空（无 ffmpeg 时跳过）');
     return;
   }
 
@@ -149,19 +151,47 @@ function main() {
     secondCase.identical = true;
   }
 
-  console.log('\n[3/3] 10 秒静音 → 必须按设计失败，且不留下空文件');
+  console.log('\n[3/4] 10 秒静音 → 必须按设计失败，且不留下空文件');
   const silenceRun = runTranscribe(path.join(work, 'silence-10s.wav'), silenceOut, ['--refresh-cache']);
   const silenceCase = Object.assign({ name: '静音 fail-closed', expectFail: true }, silenceRun);
   printCase(silenceCase);
 
-  const report = judge([firstCase, secondCase, silenceCase]);
+  // 用户传的真实素材几乎都不是 wav：mp4 / m4a / webm 走的是 PyAV 的容器解码分支，
+  // 而 wav 用例覆盖不到它。用 ffmpeg 把同一段合成语音转成 aac-in-mp4 即可覆盖，
+  // 既不需要提交任何真实音视频，也不改变判据（仍然只看「通不通」，不看文字）。
+  const cases = [firstCase, secondCase, silenceCase];
+  const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0;
+  if (!hasFfmpeg) {
+    console.log('\n[4/4] mp4 容器解码：跳过（PATH 里没有 ffmpeg）');
+    console.log('    CI 的 ubuntu runner 自带 ffmpeg，所以这一步在 CI 上会真跑。');
+  } else {
+    console.log('\n[4/4] mp4 容器 → 转写（真实用户传的是容器，不是裸 wav）');
+    const mp4 = path.join(work, 'speech.mp4');
+    const converted = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', speech, '-c:a', 'aac', '-b:a', '64k', mp4],
+      { encoding: 'utf8', timeout: 120000 });
+    if (converted.status !== 0 || !fs.existsSync(mp4)) {
+      const containerCase = { name: 'mp4 容器', status: converted.status === 0 ? 1 : converted.status,
+        stdout: 'ffmpeg 转封装失败：' + (converted.stderr || ''), outBytes: 0 };
+      cases.push(containerCase);
+      printCase(containerCase);
+    } else {
+      const mp4Out = path.join(work, 'mp4.txt');
+      const mp4Run = runTranscribe(mp4, mp4Out, ['--refresh-cache']);
+      const containerCase = Object.assign({ name: 'mp4 容器', outFile: mp4Out }, mp4Run);
+      cases.push(containerCase);
+      printCase(containerCase);
+    }
+  }
+
+  const report = judge(cases);
   if (!secondCase.identical) report.failures.push('缓存命中：两次输出内容不一致');
   if (!report.ok) {
     for (const failure of report.failures) console.error('ASR: ' + failure);
     console.error('装配检查未通过。产物与日志在 ' + work + '（--keep 可保留，默认也会留着）');
     process.exit(1);
   }
-  console.log('\nASR OK: 转写链路通、缓存可复用、静音按设计失败（' + path.relative(ROOT, work) + '）');
+  console.log('\nASR OK: 转写链路通、缓存可复用、静音按设计失败' +
+    (hasFfmpeg ? '、mp4 容器可解码' : '（mp4 用例本机跳过）') + '（' + path.relative(ROOT, work) + '）');
 }
 
 function printCase(c) {

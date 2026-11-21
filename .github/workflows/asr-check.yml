@@ -51,6 +51,11 @@ jobs:
           key: asr-${{ runner.os }}-${{ inputs.model || 'small' }}
           restore-keys: asr-${{ runner.os }}-
 
+      # ubuntu runner 自带 ffmpeg，但这里显式断言它存在：
+      # 否则第 4 个用例（mp4 容器）会静默跳过，而"绿了"会被误读成"容器解码也测过了"。
+      - name: Verify ffmpeg is available
+        run: ffmpeg -version | head -n 1
+
       - name: Synthesise a 10-second speech sample
         run: |
           espeak-ng -v en-us -s 140 -w "$RUNNER_TEMP/speech.wav" \
