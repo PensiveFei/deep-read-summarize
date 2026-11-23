@@ -21,7 +21,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { execSync, spawnSync } = require('node:child_process');
 
 const { checkNoteStructure } = require('../lib/quality');
 
@@ -40,18 +40,21 @@ const TIMEOUT_MS = Number(process.env.E2E_TIMEOUT_MS || 15 * 60 * 1000);
 const MIN_WORDS = 300;
 const IS_WIN = process.platform === 'win32';
 
-// 只覆盖模型那一行：profile 里 agent-default-model 的 config 是 {provider, model}。
-// 用 patch 而不是改 profile 自己的 cordis.patch.yml，是为了让每次跑都从模板起、可重复。
+// --json 会截断长工具结果。让隔离 profile 用明文 JSONL 保存完整会话，供退出后核对。
 const PATCH = [
   '- id: agent-default-model',
   '  config:',
   '    provider: deepseek-official',
-  '    model: ' + MODEL
+  '    model: ' + MODEL,
+  '- id: session-persistence-jsonl',
+  '  config:',
+  "    root: !!js dshHomePath('sessions')",
+  '    compression: none'
 ].join('\n') + '\n';
 
 const TASK = [
   '请用 deep-read-summarize 插件精读工作目录下的 ./input.md（这是网页摘要类型，type 用 web），',
-  '把笔记写到 ./output/ 目录。要求：调用插件提供的工具完成精读，不要自己手写笔记；',
+  '把工具成功返回的 note 正文原样写到 ./output/ 目录，保留所有质量提示。请调用 deep_read_summarize 完成精读；',
   '完成后用一句话告诉我写出的文件路径。'
 ].join('');
 
@@ -98,6 +101,67 @@ function newestNote(dir) {
   })(dir);
   found.sort(function (a, b) { return b.mtime - a.mtime; });
   return found[0] ? found[0].file : null;
+}
+
+function verifySavedNote(stdout, sessionsDir, savedNote) {
+  const events = stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
+  const session = events[0];
+  const final = events[events.length - 1];
+  if (session.type !== 'session' || !/^session-[a-zA-Z0-9-]+$/.test(session.sessionId) ||
+      final.type !== 'final' || final.sessionId !== session.sessionId || final.reason?.kind !== 'completed') {
+    throw new Error('缺少已完成的 DSH 主会话');
+  }
+
+  const pending = new Set();
+  const completed = new Set();
+  for (const event of events) {
+    if (event.type === 'tool_call' && event.tool === 'deep_read_summarize' && typeof event.callId === 'string' && event.callId) {
+      pending.add(event.callId);
+    }
+    if (event.type === 'tool_result' && pending.delete(event.callId) && event.status === 'completed' && !event.error) {
+      completed.add(event.callId);
+    }
+  }
+  if (!completed.size) throw new Error('主会话没有成功调用 deep_read_summarize');
+
+  // 每次运行使用全新的 DSH_HOME，只接受当前主会话唯一的持久化日志。
+  const logs = [];
+  for (const project of fs.readdirSync(sessionsDir, { withFileTypes: true })) {
+    if (!project.isDirectory()) continue;
+    const dir = path.join(sessionsDir, project.name, session.sessionId);
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir)) {
+      if (/^session(?:\.v\d+)?\.jsonl$/.test(file)) logs.push(path.join(dir, file));
+    }
+  }
+  if (logs.length !== 1) throw new Error('找不到唯一的主会话完整日志，无法核对落盘笔记');
+  const lines = fs.readFileSync(logs[0], 'utf8').trimEnd().split('\n');
+  const header = JSON.parse(lines[0]);
+  if (header.type !== 'session' || header.id !== session.sessionId) throw new Error('持久化日志与主会话不符');
+  // 编辑器可能转换 CRLF 或补上文件末尾的一个换行。正文中的其他空白要保留。
+  const normalize = text => text.replace(/\r\n/g, '\n').replace(/\n$/, '');
+  const expected = normalize(savedNote);
+  let returnedNote = false;
+  for (const line of lines.slice(1)) {
+    const event = JSON.parse(line);
+    if (event.type !== 'tool/result' || event.surfaceOp !== 'append') continue;
+    const message = event.data.message;
+    if (!completed.has(message.toolCallId) || message.isError || event.data.error) continue;
+    // readingTool.output.render emits a single JSON text block.
+    if (message.content.length !== 1 || message.content[0].type !== 'text') continue;
+    const value = JSON.parse(message.content[0].text);
+    if (value?.ok !== true || typeof value.note !== 'string' || !value.note.trim()) continue;
+    returnedNote = true;
+    if (normalize(value.note) === expected) return message.toolCallId;
+  }
+  throw new Error(returnedNote ? '落盘正文与工具返回的 note 不一致' : '主会话缺少匹配调用的完整成功结果');
+}
+
+function packCandidate(directory) {
+  const packed = execSync('npm pack --json', {
+    cwd: ROOT, encoding: 'utf8', env: { ...process.env, npm_config_pack_destination: directory }
+  });
+  return path.join(directory, JSON.parse(packed)[0].filename);
 }
 
 function plan() {
@@ -160,13 +224,13 @@ function main() {
     process.exit(2);
   }
 
-  const install = ['plugin', '--profile', 'headless', 'add', ROOT];
+  const install = ['plugin', '--profile', 'headless', 'add'];
   const runArgs = ['--profile', 'headless', '--patch', paths.patchFile,
     '--json', '--permission-mode', 'workspace-write', '--approval-policy', 'never', '-'];
 
   if (dryRun) {
     console.log('\ndry-run：将执行');
-    console.log('  dsh ' + install.join(' '));
+    console.log('  npm pack → dsh ' + install.join(' ') + ' <候选包.tgz>');
     console.log('  dsh ' + runArgs.join(' ') + '   ← 任务文本走 stdin');
     console.log('（DSH_HOME=' + path.relative(ROOT, paths.home) + '，cwd=' + path.relative(ROOT, paths.work) + '）');
     return;
@@ -178,7 +242,9 @@ function main() {
   delete env.DEEPSEEK_API_KEY;
 
   console.log('\n[1/3] 安装插件到隔离 profile');
-  const installed = run(dsh.command, dsh.prefix.concat(install), { cwd: paths.work, env: env });
+  const candidate = packCandidate(paths.base);
+  console.log('  npm pack: ' + path.basename(candidate));
+  const installed = run(dsh.command, dsh.prefix.concat(install, candidate), { cwd: paths.work, env: env });
   if (installed.status !== 0) {
     console.error('E2E: plugin add 失败（exit ' + installed.status + '）');
     console.error((installed.stdout || '') + (installed.stderr || ''));
@@ -201,6 +267,12 @@ function main() {
   let stats = null;
   if (noteFile) {
     const note = fs.readFileSync(noteFile, 'utf8');
+    try {
+      const callId = verifySavedNote(result.stdout, path.join(paths.home, 'sessions'), note);
+      console.log('  已核对 deep_read_summarize 返回正文与落盘文件：' + callId);
+    } catch (error) {
+      failures.push('工具调用与落盘核验失败：' + error.message);
+    }
     const check = checkNoteStructure(note, { minWords: MIN_WORDS });
     stats = { file: path.relative(ROOT, noteFile), wordCount: check.wordCount, quotes: check.quotes.length };
     if (!check.formatComplete) failures.push('产物结构不合格：' + (check.issues.join('；') || '格式未通过'));
@@ -227,4 +299,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { PATCH, TASK, SOURCE, newestNote, plan };
+module.exports = { PATCH, TASK, SOURCE, newestNote, verifySavedNote, packCandidate, plan };
