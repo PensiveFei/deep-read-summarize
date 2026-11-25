@@ -54,7 +54,9 @@ dsh plugin --profile desktop add deep-read-summarize
 
 ### 2. 发起一次精读
 
-在 DSH 对话中输入，例如：
+第一次可以选一个工作目录里的本地 `.txt` 或 `.md`，跳过下载和格式转换。对 DSH 说「请用精读插件为 `./input.md` 生成简洁笔记，保存到 `./output/`，告诉我最终文件路径」。把文件名换成自己的。完成后按返回路径打开 Markdown，确认能看到正文、引文和来源状态。
+
+如果要读在线论文，可以输入：
 
 ```text
 请帮我精读这篇论文，并生成一份 Markdown 阅读笔记：
@@ -169,7 +171,15 @@ npm run validate
 
 [精读质量基准](benchmarks/quality/README.md)提供 16 个公开可用的短样本、逐条参考事实和离线计分工具；语义质量需要人工复核，不能把未评审的结果视为得分。
 
-**兼容性：**本项目此前验证过 DSH `0.2.0-rc.2` 的相关宿主契约；DSH 接口可能变化，其他版本请以实际测试和兼容说明为准。
+[同模型论文对照实验](https://github.com/PensiveFei/deep-read-summarize/tree/main/benchmarks/paper-pair)提供一篇完整论文的直接总结、插件运行和匿名评审流程。[首次使用观察表](https://github.com/PensiveFei/deep-read-summarize/blob/main/docs/first-use-trial.md)可用来记录安装、首次落盘和次日使用。
+
+### DSH 兼容性
+
+| DSH 入口 | 已核对的范围 |
+| --- | --- |
+| headless，`0.2.2-rc.5` | Ubuntu 上有[真实模型运行记录](https://github.com/PensiveFei/deep-read-summarize/actions/runs/44889014574)。当前测试增加了候选包安装及返回正文与文件的一致性检查。 |
+| 旧宿主，`0.2.0-rc.2` | 验证过插件注册和工作流相关契约。 |
+| Desktop | 上面的步骤使用桌面 profile。桌面 GUI 的安装与首次保存需要按具体 Desktop 版本实测。 |
 
 ## 版权与声明
 

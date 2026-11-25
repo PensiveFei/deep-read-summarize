@@ -21,7 +21,7 @@ module.exports = {
       steps: [
         "获取文本：arXiv→访问 abs 页取 PDF/HTML 全文；PDF→read 或 pdftotext；HTML→提取正文（去导航/广告）；用户提供的本地纯文本→直接读取，不要尝试当作网址或 PDF。",
         "全文写入目标文件（不截断、不加评注），用 read 确认总行数。",
-        "识别论文结构：Abstract/Introduction/Methods/Results/Discussion/Conclusion/Appendix 及各表图行号范围。"
+        "识别摘要、引言、方法、结果、讨论、结论、附录及各表图的行号范围。保留原文已有的分页边界、表题及行列标签；如能确认版本，在 metadata.url 填本次实际读取的版本链接。纯文本保持原样。"
       ],
       chunkRule: "论文章节",
       jsonExample: '{ "kind": "paper", "saved": true, "totalLines": 200, "metadata": { "title": "", "author": "", "year": "", "language": "zh" }, "chunkPlan": [ { "id": 1, "topic": "Introduction", "startLine": 1, "endLine": 200 } ] }'

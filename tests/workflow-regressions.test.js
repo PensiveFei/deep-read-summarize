@@ -61,6 +61,20 @@ async function runWorkflow(args, config = {}) {
   return { result, calls };
 }
 
+test('paper workers carry source locations and conditions into drafting and independent review', async () => {
+  const input = 'https://arxiv.org/abs/2201.11903v2';
+  const paper = await runWorkflow({ input, type: 'paper' });
+  const prompt = label => paper.calls.find(call => call.label === label).prompt;
+  assert.ok(prompt('精读块').includes(input));
+  for (const label of ['精读块', '汇总成稿']) {
+    assert.match(prompt(label), /实验条件/);
+    assert.match(prompt(label), /不得推算页码/);
+  }
+  assert.match(prompt('质量校验'), /回查行列、数值和实验条件/);
+  const web = await runWorkflow({ input: 'example.txt', type: 'web' });
+  assert.ok(web.calls.every(call => !call.prompt.includes('不得推算页码')));
+});
+
 function assertCompleteCoverage(run, totalLines, maxChunks) {
   assert.equal(run.result.ok, true);
   const ranges = run.calls.filter(call => call.label === '精读块').map(call => readRange(call.prompt));

@@ -54,7 +54,9 @@ Deep reading also requires a working model and suitable permissions in DSH. Some
 
 ### 2. Request a reading note
 
-In a DSH conversation, for example:
+For a first run, choose a local `.txt` or `.md` file in the working directory. Ask DSH to “use the reading plugin to make a concise note from `./input.md`, save it under `./output/`, and give me the final path.” Substitute your filename. Open the Markdown at that path and check the body, quotations and source status.
+
+For an online paper:
 
 ```text
 Please read this paper in depth and save a Markdown reading note:
@@ -164,7 +166,15 @@ The project uses parsers for different input types and supports custom parsers. 
 
 The [reading-quality benchmark](benchmarks/quality/README.md) provides 16 short public-use cases, annotated reference points, and an offline scorer. Semantic quality requires human review; unreviewed results are not scores.
 
-The relevant host contracts were previously verified with DSH `0.2.0-rc.2`. DSH interfaces can change; verify other versions against the actual host and compatibility information.
+The [same-model paper comparison](https://github.com/PensiveFei/deep-read-summarize/tree/main/benchmarks/paper-pair) prepares a full paper for direct summarization, plugin reading and blinded review. The [first-use worksheet](https://github.com/PensiveFei/deep-read-summarize/blob/main/docs/first-use-trial.md) covers installation, saving and next-day use.
+
+### DSH compatibility
+
+| DSH entry point | Verification scope |
+| --- | --- |
+| Headless, `0.2.2-rc.5` | [Recorded Ubuntu run with a live model](https://github.com/PensiveFei/deep-read-summarize/actions/runs/44889014574). The current test also installs the candidate package and compares the returned note with the saved file. |
+| Older host, `0.2.0-rc.2` | Plugin registration and relevant workflow contracts were checked. |
+| Desktop | The installation instructions use the desktop profile. Record the Desktop version when testing first-time installation and saving through its GUI. |
 
 ## License and disclaimer
 

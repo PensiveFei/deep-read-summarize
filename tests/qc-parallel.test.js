@@ -39,6 +39,10 @@ async function run(mode, useParallel = true) {
       await gate; active--;
       if (mode === 'blockFail' && id === 2) throw new Error('unavailable');
       if (mode === 'fatal' && id === 2) throw Object.assign(new Error('fatal host failure'), { fatal: true });
+      if (mode === 'wrongCondition' && id === 2) {
+        assert.match(prompt, /回查行列、数值和实验条件/);
+        return { sourceChecked: true, covered: false, sourceExcerpt: '表 2', citationChecks: [], issues: ['表 2 对照组缺少实验条件'] };
+      }
       const citations = [];
       if (id === 1) citations.push({ quote: '第一句', sourceQuote: '这里是第一句。', chunkId: 1, startLine: 2, endLine: 2, location: '第 2 行', verified: true });
       if (id === 3 && mode !== 'missing') citations.push({ quote: '第二句', sourceQuote: mode === 'wrongText' ? '这是改写。' : '这里是第二句。', chunkId: mode === 'wrongChunk' ? 1 : 3, startLine: 22, endLine: 22, location: '第 22 行', verified: true });
@@ -50,6 +54,12 @@ async function run(mode, useParallel = true) {
   assert.equal(result.citationVerification.status, 'unverified');
   return { result, max, legacy, auditedNotes };
 }
+test('parallel audit preserves the specific paper locator issue when a chunk fails coverage', async () => {
+  const { result } = await run('wrongCondition');
+  assert.equal(result.__verificationCandidate.passed, false);
+  assert.ok(result.qualityIssues.includes('表 2 对照组缺少实验条件'));
+});
+
 test('independent chunk auditors run concurrently and aggregate citations across chunks', { timeout: 3000 }, async () => {
   const { result, max } = await run('ok');
   assert.equal(max, 4);

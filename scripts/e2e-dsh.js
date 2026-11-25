@@ -299,4 +299,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { PATCH, TASK, SOURCE, newestNote, verifySavedNote, packCandidate, plan };
+module.exports = { PATCH, TASK, SOURCE, newestNote, verifySavedNote, packCandidate, plan, dshInvocation };
