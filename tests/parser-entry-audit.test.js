@@ -249,7 +249,7 @@ test('Cordis optional-service injection upgrades late services, restores fallbac
 test('every built-in parser ships a fetch example that is real JSON inside the schema', () => {
   const languageEnum = schemas.fetchResultSchema.properties.metadata.properties.language.enum;
   const textSources = ['subtitle', 'transcription', 'desc', 'manual'];
-  for (const type of ['book', 'paper', 'video', 'web']) {
+  for (const type of ['blog', 'book', 'paper', 'repo', 'video', 'web']) {
     const prompt = parsers.resolve(type).buildPrompt('https://example.com/doc', { tempDir: '/tmp', maxChunks: 4 });
     const line = prompt.split('\n').find(entry => entry.trim().startsWith('{ "kind"'));
     assert.ok(line, type + ': fetch example missing');

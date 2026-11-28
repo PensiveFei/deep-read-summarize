@@ -10,7 +10,7 @@ const execute = new Function('args', 'phase', 'agent', 'parallel', 'log',
   'return (async () => { ' + workflow.script + ' })()');
 
 function parserKind(prompt) {
-  const match = prompt.match(/内容类型：[^\n]*（(book|paper|video|web)）/);
+  const match = prompt.match(/内容类型：[^\n]*（([a-z]+)）/);
   assert.ok(match, 'fetch prompt must identify the selected parser');
   return match[1];
 }
@@ -45,7 +45,7 @@ async function runWorkflow(args, config = {}) {
       if (Object.prototype.hasOwnProperty.call(config, 'fetchReply')) return config.fetchReply;
       const fetched = {
         kind: config.fetchedKind || parserKind(prompt), saved: true,
-        metadata: { title: 'Regression fixture' }, chunkPlan
+        metadata: { title: 'Regression fixture', ...config.metadata }, chunkPlan
       };
       if (config.omitTotalLines !== true) fetched.totalLines = totalLines;
       if (config.balancePlan !== undefined) fetched.balancePlan = config.balancePlan;
@@ -101,6 +101,12 @@ const automaticCases = [
   ['Douyin URL', 'https://v.douyin.com/fixture/', 'video'],
   ['arXiv abstract', 'https://arxiv.org/abs/2307.09042', 'paper'],
   ['arXiv HTML', 'https://arxiv.org/html/2307.09042v1', 'paper'],
+  ['GitHub repository', 'https://github.com/PensiveFei/deep-read-summarize', 'repo'],
+  ['GitHub subtree', 'https://github.com/example/project/tree/main/src/', 'repo'],
+  ['Git HTTPS clone URL', 'https://github.com/example/project.git', 'repo'],
+  ['CSDN post', 'https://blog.csdn.net/example/article/details/123456', 'blog'],
+  ['博客园 post', 'https://www.cnblogs.com/example/p/123.html', 'blog'],
+  ['Substack post', 'https://reader.substack.com/p/article?utm_source=feed', 'blog'],
   ['local EPUB', 'D:\\Books\\A book.epub', 'book'],
   ['local MOBI', '/home/reader/Books/a-book.mobi', 'book'],
   ['local AZW', '/home/reader/Books/a-book.azw', 'book'],
@@ -113,7 +119,7 @@ const automaticCases = [
 for (const [name, input, expected] of automaticCases) {
   test('B01 auto selects the correct parser for ' + name, async () => {
     // Omit type to also exercise the default automatic mode.
-    const run = await runWorkflow({ input }, { classifiedKind: expected });
+    const run = await runWorkflow({ input }, { classifiedKind: expected, metadata: { revision: 'a'.repeat(40) } });
     const fetchCall = run.calls.find(call => call.label === '获取+分块');
     assert.equal(parserKind(fetchCall.prompt), expected);
     assert.equal(run.result.kind, expected);
@@ -165,6 +171,15 @@ test('B01 article, help, and channel pages on known hosts still require classifi
     'https://www.youtube.com/channel/fixture',
     'https://www.youtube.com/watch#?v=fixture',
     'https://www.youtube.com/watch?other=?v=fixture',
+    'https://github.com/topics/python',
+    'https://github.com/orgs/my-org',
+    'https://github.com/PensiveFei/deep-read-summarize/issues/12',
+    'https://github.com/PensiveFei/deep-read-summarize/pull/12',
+    'https://github.com/example/project/blob/main/index.js',
+    'https://github.com.example.org/example/project',
+    'https://example.org/user?site=https://github.com/owner/project',
+    'https://blog.csdn.net/example',
+    'https://reader.substack.com/archive',
     'https://example.mobi'
   ]) {
     const run = await runWorkflow({ input, type: 'auto' }, { classifiedKind: 'web' });
@@ -478,4 +493,42 @@ test('a missing structured fetch result is not reported as a failed content fetc
 
   const explained = (await runWorkflow(args, { fetchReply: { saved: false, message: 'Access denied by source' } })).result;
   assert.equal(explained.message, 'Access denied by source', 'an explicit stop message must survive untouched');
+});
+
+test('repo walkthroughs retain the revision, distinguish file lines, and disclose partial coverage', async () => {
+  const revision = 'b'.repeat(40);
+  const repo = await runWorkflow({ input: './sample-repo', type: 'repo' }, { metadata: { revision } });
+  const prompt = label => repo.calls.find(call => call.label === label).prompt;
+  assert.equal(repo.result.kind, 'repo');
+  assert.match(prompt('获取+分块'), /repo-snapshot\.js/);
+  for (const label of ['精读块', '汇总成稿']) {
+    assert.ok(prompt(label).includes(revision));
+    assert.match(prompt(label), /仓库相对路径及原始行号/);
+  }
+  assert.match(prompt('质量校验'), /文件定位头与原始行号/);
+  assert.equal(repo.result.sourceStatus, 'partial');
+  assert.equal(repo.result.qualityChecks.coverage, false);
+  assert.match(repo.result.note, /仓库其他文件未核验/);
+  for (const invalid of ['', 'main', 'a1b2c3d']) {
+    const run = await runWorkflow({ input: './sample-repo', type: 'repo' }, { metadata: { revision: invalid } });
+    assert.equal(run.result.stage, 'fetch');
+    assert.ok(!run.calls.some(call => call.label === '精读块'));
+  }
+});
+
+test('blog article scope and metadata carry through selection, reading, drafting and review', async () => {
+  const input = 'https://example.org/independent-post';
+  const metadata = { publishedAt: '2026-01-12', author: 'Guest Author', sourceStatus: 'partial' };
+  const run = await runWorkflow({ input }, { classifiedKind: 'blog', metadata });
+  const prompt = label => run.calls.find(call => call.label === label).prompt;
+  assert.equal(run.result.kind, 'blog');
+  assert.equal(run.result.sourceStatus, 'partial');
+  assert.match(prompt('获取+分块'), /付费墙/);
+  assert.match(prompt('获取+分块'), /评论/);
+  for (const label of ['精读块', '汇总成稿']) {
+    assert.ok(prompt(label).includes(metadata.publishedAt));
+    assert.ok(prompt(label).includes(metadata.author));
+    assert.match(prompt(label), /文章小节或段落/);
+  }
+  assert.match(prompt('质量校验'), /错引或误归因/);
 });

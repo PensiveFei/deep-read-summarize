@@ -8,8 +8,8 @@
 
 const meta = {
   "name": "deep-read-summarize",
-  "description": "Deep reading & summarization of books/papers/videos/web (v3.0)",
-  "whenToUse": "User provides a book, paper, video link or web page and wants a deep-read summary saved as a Markdown note",
+  "description": "Deep reading & summarization of books, papers, videos, blog posts, code repositories and web pages (v3.0)",
+  "whenToUse": "User provides a book, paper, video link, blog post, code repository or web page and wants a deep-read summary saved as a Markdown note",
   "phases": [
     {
       "title": "解析器选择",
@@ -55,14 +55,14 @@ const quality = require("./lib/quality");
  * 暴露给脚本，不会注入 args._parsers；脚本必须在自身内部解析器可用。
  * 若宿主未来注入 args._parsers，优先使用宿主注入值（向后兼容）。
  *
- * 内联的是 **注册表里的全部解析器**，不是写死的四个：custom-parsers/ 里的
+ * 内联的是 **注册表里的全部解析器**：custom-parsers/ 里的
  * 覆盖与自定义类型因此都能真正进入脚本（此前自定义新类型在 type 白名单
  * 和这里两道关都被丢掉）。fetchSchema 同样从 schemas/index.js 注入，
  * 保持单一真相，不再和脚本里的副本各自漂移。
  */
 function buildSelfContainedScript(parserRegistry = parsers.registry) {
   const parserNames = Object.keys(parserRegistry.parsers);
-  // kind 的合法取值跟着解析器表走（含自定义类型），不再写死四个内置类型。
+  // kind 的合法取值跟着解析器表走（含自定义类型），支持新增类型。
   const fetchSchema = JSON.parse(JSON.stringify(schemas.fetchResultSchema));
   if (fetchSchema.properties && fetchSchema.properties.kind) {
     fetchSchema.properties.kind.enum = parserNames.slice();
@@ -77,7 +77,11 @@ function buildSelfContainedScript(parserRegistry = parsers.registry) {
   if (!RAW_SCRIPT.includes(marker)) {
     throw new Error("workflow script marker not found: " + marker);
   }
-  const runtimePaths = { transcribeScript: fs.realpathSync(path.join(__dirname, 'scripts', 'transcribe.js')), chunkBalanceScript: fs.realpathSync(path.join(__dirname, 'scripts', 'chunk-balance.js')) };
+  const runtimePaths = {
+    repoSnapshotScript: fs.realpathSync(path.join(__dirname, 'scripts', 'repo-snapshot.js')),
+    transcribeScript: fs.realpathSync(path.join(__dirname, 'scripts', 'transcribe.js')),
+    chunkBalanceScript: fs.realpathSync(path.join(__dirname, 'scripts', 'chunk-balance.js'))
+  };
   return 'const __runtimePaths = ' + JSON.stringify(runtimePaths) + ';\n' +
     'const normalizeWorkflowOptions = ' + normalizeWorkflowOptions.toString() + ';\n' +
     'const __quality = { extractNote: ' + quality.extractNote.toString() +

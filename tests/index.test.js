@@ -15,9 +15,9 @@ test('plugin loads with name deep-read-summarize', () => {
 
 // ---------- 解析器 ----------
 const parsers = require('../parsers');
-test('registry exposes 4 built-in parsers', () => {
+test('registry exposes six built-in parsers', () => {
   const names = parsers.list().map(p => p.name).sort();
-  assert.deepStrictEqual(names, ['book', 'paper', 'video', 'web']);
+  assert.deepStrictEqual(names, ['blog', 'book', 'paper', 'repo', 'video', 'web']);
 });
 
 test('resolve falls back to web for unknown type', () => {
@@ -25,7 +25,7 @@ test('resolve falls back to web for unknown type', () => {
 });
 
 test('every parser builds a non-empty prompt', () => {
-  for (const type of ['book', 'paper', 'video', 'web']) {
+  for (const type of ['blog', 'book', 'paper', 'repo', 'video', 'web']) {
     const prompt = parsers.resolve(type).buildPrompt('https://example.com/x', { tempDir: '/tmp', tempFile: '/tmp/in.txt', maxChunks: 4 });
     assert.ok(typeof prompt === 'string' && prompt.length > 50, type + ' prompt too short');
   }

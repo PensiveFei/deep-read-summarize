@@ -7,7 +7,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/PensiveFei/deep-read-summarize/ci.yml)](https://github.com/PensiveFei/deep-read-summarize/actions/workflows/ci.yml)
 [![npm total downloads](https://badgen.net/npm/dt/deep-read-summarize)](https://www.npmjs.com/package/deep-read-summarize)
 
-Turn a paper, book, video, or web page into a **Markdown reading note you can keep, edit, and check against the source**.
+Turn a paper, book, video, blog post, code repository, or web page into a **Markdown reading note you can keep, edit, and check against the source**.
 
 This third-party plugin runs in [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness). It attempts to retrieve the source text, reads long material in chunks, and combines the results into a structured note with YAML frontmatter. You can use the note in Obsidian, Logseq, or another Markdown tool.
 
@@ -32,6 +32,8 @@ These are historical notes supplied by the maintainer, in Chinese. The paper not
 | A book: PDF, EPUB, MOBI | Text and chapters | A reading note organized by topic |
 | A paper: arXiv, PDF, HTML | Paper text and structure | Research question, method, findings, and limitations |
 | A video link | Subtitles first; local transcription when needed and available | A breakdown based on the text obtained |
+| A blog post URL or local Markdown / HTML | Article body, headings and code blocks | Claims, examples, qualifications and section references |
+| A repository URL or local Git directory | Up to eight files at one commit, including documentation, entry points, implementation and related tests | A project walkthrough with repository paths and original line numbers |
 | A web page | Page text | Key points, concepts, and source information |
 
 Extraction depends on source accessibility, available tools, the model, and host permissions. Scanned PDFs generally need OCR first; the workflow does not provide automatic OCR. Complex formulas, diagrams, and poor-quality captions or audio may also need manual handling.
@@ -63,7 +65,7 @@ Please read this paper in depth and save a Markdown reading note:
 https://arxiv.org/abs/2307.09042
 ```
 
-You can also provide a local file, web page, or video link. If needed, specify an output location, sections to retain, or whether you want timestamps.
+For a repository, try “Read https://github.com/PensiveFei/deep-read-summarize and trace the plugin entry point through parser registration.” For a blog, provide the individual post URL. You can select `type: "blog"` for independent sites. A repository sample is always marked `partial` and fails the existing whole-source coverage check. If needed, specify an output location, sections to retain, or whether you want timestamps.
 
 For a shorter note, ask for “a concise reading note with key points, terminology, and quotations.” The main agent can select concise mode, which defaults to a minimum count of 500 and omits sections 5–7 while retaining source review. Ask explicitly if you also want critical analysis or the other optional sections. The minimum is not a length cap; the model determines the actual output length.
 
@@ -85,7 +87,7 @@ When an identifiable note is extracted from a wrapper, the optional `draftContex
 }
 ```
 
-`type` can be `auto`, `book`, `paper`, `video`, or `web`. Specifying it can skip classification for ambiguous inputs. The tool-call interface depends on the DSH host; asking in conversation is also supported.
+`type` can be `auto`, `book`, `paper`, `video`, `blog`, `repo`, or `web`. Specifying it can skip classification for ambiguous inputs. The tool-call interface depends on the DSH host; asking in conversation is also supported.
 
 </details>
 

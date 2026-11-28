@@ -100,11 +100,11 @@ function optionalService(ctx, name) {
 function readingTool(engine, defaults, registry) {
   return {
     name: 'deep_read_summarize',
-    description: '深度精读书籍、论文、视频或网页，返回完整 Markdown 笔记、建议保存路径及原文质量核验结果。拿到结果后必须检查同名文件并保存 note；质量未通过或有内容缺口时必须报告。',
+    description: '深度精读书籍、论文、视频、博客文章、代码仓库或网页，返回完整 Markdown 笔记、建议保存路径及原文质量核验结果。拿到结果后必须检查同名文件并保存 note；质量未通过或有内容缺口时必须报告。',
     parameters: {
       type: 'object', additionalProperties: false,
       properties: {
-        input: { type: 'string', description: '内容链接或本地文件路径' },
+        input: { type: 'string', description: '内容链接、本地文件路径或本地 Git 仓库目录' },
         type: { type: 'string', description: 'auto 或已注册的解析器类型，默认 auto' },
         options: { type: 'object', additionalProperties: true, description: '覆盖当前 profile 的精读选项' }
       }, required: ['input']

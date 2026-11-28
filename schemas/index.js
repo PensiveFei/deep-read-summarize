@@ -20,7 +20,7 @@
 const fetchResultSchema = {
   type: "object",
   properties: {
-    kind: { type: "string", enum: ["book", "paper", "video", "web"] },
+    kind: { type: "string", enum: ["blog", "book", "paper", "repo", "video", "web"] },
     saved: { type: "boolean" },
     message: { type: "string" },
     totalLines: { type: "number" },
@@ -31,6 +31,9 @@ const fetchResultSchema = {
         author: { type: "string" },
         year: { type: "string" },
         language: { type: "string", enum: ["zh", "en", "other", ""] },
+        url: { type: "string" },
+        publishedAt: { type: "string" },
+        revision: { type: "string" },
         sourceStatus: { type: "string", enum: ["partial", "unknown"] }
       },
       required: [],

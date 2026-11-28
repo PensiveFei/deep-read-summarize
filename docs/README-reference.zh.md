@@ -10,7 +10,7 @@
 输入（链接或文件路径）
   │
   ▼
-解析器注册表 ── book / paper / video / web
+解析器注册表 ── book / paper / video / blog / repo / web
   │
   ▼
 波次1  获取内容 → 写入临时文件 → 生成分块计划
@@ -27,7 +27,7 @@ Markdown 笔记
 
 三个波次，默认约 N+3 次子代理调用（获取、N 块精读、成稿、质量校验）。`auto` 遇到 PDF、未知网页或文本等模糊输入时，额外进行一次轻量类型识别；显式指定 `type` 可跳过识别。
 
-`auto` 会将明确的视频链接、arXiv 论文链接和电子书扩展名直接分发到对应解析器；同站的专栏、频道与帮助页仍先分类，PDF 会根据内容区分书籍与论文。无法识别时返回 `stage: "detect"`，请显式指定类型。`options.tempDir` 作为临时根目录，每次调用在其中创建独立的 `run-*` 子目录，获取、音频和转写文件不与其他任务共用。
+`auto` 会将明确的视频链接、arXiv 论文链接、电子书扩展名、GitHub 仓库及目录链接、CSDN / 博客园 / Substack 单篇链接直接分发到对应解析器；同站的专栏、频道与帮助页仍先分类，PDF 会根据内容区分书籍与论文。无法识别时返回 `stage: "detect"`，请显式指定类型。`options.tempDir` 作为临时根目录，每次调用在其中创建独立的 `run-*` 子目录，获取、音频和转写文件不与其他任务共用。
 
 分块计划会排序、裁掉重复区间并补齐缺口，超过 `maxChunks` 时合并相邻块以保留已知行号。获取代理运行内置脚本，按保存文本的字符数计算整行分界，统计不可用时回退按行数均衡。字符数只是 token 数和工作量的近似值，超长单行不会拆分。插件工具入口还会将代理声明的总行数与实际保存文件比较；行数未知、不一致或文件不能稳定读取时，`coverageComplete` 与 `qualityPassed` 为 false。
 
@@ -44,6 +44,8 @@ parsers/         各输入类型的解析器，按类型分发
   book.js        书籍：PDF/EPUB/MOBI 文本提取、章节分块
   paper.js       论文：arXiv/PDF/HTML 结构识别
   video.js       视频：字幕优先、可选转写，获取失败时降级
+  blog.js        博客：单篇正文、示例、小节定位
+  repo.js        仓库：同一提交的代表性文件
   web.js         网页：正文提取
   index.js       注册表：解析器发现与回退
 schemas/         输出约束的 JSON Schema（波次1 由 workflow.js 注入脚本，单一真相）
@@ -70,7 +72,7 @@ workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema �
 ```jsonc
 {
   "input": "https://arxiv.org/abs/2307.09042",  // 链接或文件路径
-  "type": "auto",   // auto | book | paper | video | web
+  "type": "auto",   // auto | book | paper | video | blog | repo | web
   "options": {
     "lengthMode": "standard", // standard | concise
     "minWords": 2500,
@@ -105,6 +107,8 @@ workflow.js      workflow 的 meta 与组装逻辑（解析器内联、schema �
 | 论文 | `https://arxiv.org/abs/2307.09042` |
 | 书籍 | 本地路径，如 `~/books/xxx.pdf` |
 | 视频 | `https://youtube.com/watch?v=xxx` |
+| 博客 | 单篇文章 URL 或本地 Markdown / HTML 文件 |
+| 仓库 | `https://github.com/PensiveFei/deep-read-summarize` 或本地 Git 目录（`type: "repo"`） |
 | 网页 | `https://example.com/article` |
 
 返回的 `filePath` 建议使用 `options.outputDir` 指定的目录（默认 `./output`），文件名取自内容标题；工作流不会直接写笔记，必须由主代理负责落盘。

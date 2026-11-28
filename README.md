@@ -7,7 +7,7 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/PensiveFei/deep-read-summarize/ci.yml)](https://github.com/PensiveFei/deep-read-summarize/actions/workflows/ci.yml)
 [![npm total downloads](https://badgen.net/npm/dt/deep-read-summarize)](https://www.npmjs.com/package/deep-read-summarize)
 
-把论文、书籍、视频或网页整理成一份**可以继续阅读、编辑和回查的 Markdown 笔记**。
+把论文、书籍、视频、博客文章、代码仓库或网页整理成一份**可以继续阅读、编辑和回查的 Markdown 笔记**。
 
 这是一个运行在 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 中的第三方精读插件。它尝试获取来源全文，将长内容分块阅读，再合并成带 YAML frontmatter 的结构化笔记。你可以把结果放进 Obsidian、Logseq 或其他 Markdown 工具。
 
@@ -32,6 +32,8 @@
 | 书籍：PDF、EPUB、MOBI | 文本和章节 | 按主题整理的阅读笔记 |
 | 论文：arXiv、PDF、HTML | 论文正文和结构 | 研究问题、方法、结论与局限 |
 | 视频链接 | 优先字幕；无字幕时可尝试本地转写 | 基于已取得文本的内容拆解 |
+| 单篇博客链接或本地 Markdown / HTML | 文章正文、代码块和小节标题 | 作者的主张、例证、适用条件和小节出处 |
+| 仓库链接或本地 Git 目录 | 同一提交中的 README、入口、核心实现及相关测试，最多选读 8 个文件 | 有文件路径与原始行号的项目阅读笔记 |
 | 网页链接 | 页面正文 | 要点、概念和来源信息 |
 
 实际提取结果取决于来源是否可访问、工具是否可用、模型和宿主权限。扫描版 PDF 通常需要先进行 OCR，工作流不内置自动 OCR；复杂公式、图表以及质量差的字幕或音频可能需要人工处理。
@@ -63,7 +65,7 @@ dsh plugin --profile desktop add deep-read-summarize
 https://arxiv.org/abs/2307.09042
 ```
 
-你也可以提供本地文件路径、网页或视频链接。如果需要，可以在请求中说明输出位置、希望保留的章节或是否需要时间戳。
+也可以直接说“精读这个仓库 https://github.com/PensiveFei/deep-read-summarize ，从插件入口讲到解析器注册”。读博客时给出单篇文章链接即可，独立博客可显式指定 `type: "blog"`。仓库选读始终标记为 `partial`，现有整份来源的覆盖检查会提示未通过。如果需要，可以在请求中说明输出位置、希望保留的章节或是否需要时间戳。
 
 想要短一些，可以说“请生成简洁笔记，保留要点、术语和关键引用”。主代理可选择简洁模式，默认最低计数为 500 并省略第 5–7 节，仍保留原文核验；如需批判分析等章节，可以在请求中说明。最低篇幅并非字数上限，实际长度仍由模型决定。
 
@@ -85,7 +87,7 @@ https://arxiv.org/abs/2307.09042
 }
 ```
 
-`type` 可选 `auto`、`book`、`paper`、`video` 或 `web`。显式指定类型可以跳过部分模糊输入的识别步骤。具体工具调用方式取决于 DSH 宿主；也可以直接在对话里表达需求。
+`type` 可选 `auto`、`book`、`paper`、`video`、`blog`、`repo` 或 `web`。显式指定类型可以跳过部分模糊输入的识别步骤。具体工具调用方式取决于 DSH 宿主；也可以直接在对话里表达需求。
 
 </details>
 

@@ -10,7 +10,7 @@ This page retains the full workflow, configuration, transcription and extension 
 Input (link or file path)
   │
   ▼
-Parser registry ── book / paper / video / web
+Parser registry ── book / paper / video / blog / repo / web
   │
   ▼
 Wave 1  Fetch content → write temp file → build chunk plan
@@ -27,7 +27,7 @@ Markdown note
 
 Three waves, normally N+3 sub-agent calls (fetch, N chunk reads, draft, and quality check). In `auto` mode, ambiguous PDFs, unfamiliar web pages, and text inputs require one additional lightweight classification call. An explicit `type` skips classification.
 
-`auto` routes recognized video links, arXiv paper links, and ebook extensions directly to their parsers; columns, channels, and help pages on those sites still require classification. PDFs are classified as books or papers from their content. Failed classification returns `stage: "detect"` and asks for an explicit type. `options.tempDir` is a temporary root: each call creates its own `run-*` subdirectory, keeping fetched text, audio, and transcripts separate from other tasks.
+`auto` routes recognized video links, arXiv papers, ebook extensions, GitHub repository and tree URLs, and individual CSDN, CNBlogs and Substack posts directly to their parsers; columns, channels, and help pages on those sites still require classification. PDFs are classified as books or papers from their content. Failed classification returns `stage: "detect"` and asks for an explicit type. `options.tempDir` is a temporary root: each call creates its own `run-*` subdirectory, keeping fetched text, audio, and transcripts separate from other tasks.
 
 Chunk plans are sorted, duplicate ranges trimmed, and gaps filled; plans above `maxChunks` merge adjacent ranges rather than discard known lines. Character-balanced whole-line boundaries fall back to line balancing when unavailable. Character counts are only a workload approximation, and a single long line is not split. The plugin tool compares the declared line count with the acquired file; unknown or mismatched counts or an unstable file fail coverage and quality.
 
@@ -44,6 +44,8 @@ parsers/         Parsers for each input type, dispatched by type
   book.js        Books: PDF/EPUB/MOBI text extraction, chapter chunking
   paper.js       Papers: arXiv/PDF/HTML structure detection
   video.js       Video: subtitles first, optional transcription, with fallback on acquisition failure
+  blog.js        Blog posts: article text, examples and section locations
+  repo.js        Repositories: selected files at one commit
   web.js         Web pages: main-text extraction
   index.js       Registry: parser discovery and fallback
 schemas/         JSON Schema for the output contract (injected into the script by workflow.js - single source of truth)
@@ -71,7 +73,7 @@ The `deep_read_summarize` tool takes these parameters directly. On older hosts, 
 ```jsonc
 {
   "input": "https://arxiv.org/abs/2307.09042",  // link or file path
-  "type": "auto",   // auto | book | paper | video | web
+  "type": "auto",   // auto | book | paper | video | blog | repo | web
   "options": {
     "lengthMode": "standard", // standard | concise
     "minWords": 2500,
@@ -104,6 +106,8 @@ Examples:
 | Paper | `https://arxiv.org/abs/2307.09042` |
 | Book | local path, e.g. `~/books/xxx.pdf` |
 | Video | `https://youtube.com/watch?v=xxx` |
+| Blog post | Individual post URL or local Markdown / HTML file |
+| Repository | `https://github.com/PensiveFei/deep-read-summarize` or a local Git directory (`type: "repo"`) |
 | Web page | `https://example.com/article` |
 
 The returned `filePath` suggests a location under `options.outputDir` (default `./output`), with the filename taken from the content title. The workflow does not write the note: the main agent must save it.

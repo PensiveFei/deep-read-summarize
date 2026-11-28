@@ -12,10 +12,10 @@ function test(name, fn) {
 
 // ---------- Test: parser registry ----------
 const parsers = require('../parsers');
-test('registry exposes 4 built-in parsers', () => {
+test('registry exposes six built-in parsers', () => {
   const list = parsers.list();
   const names = list.map(p => p.name).sort();
-  assert.deepStrictEqual(names, ['book', 'paper', 'video', 'web']);
+  assert.deepStrictEqual(names, ['blog', 'book', 'paper', 'repo', 'video', 'web']);
 });
 
 test('resolve returns matching parser', () => {
@@ -27,7 +27,7 @@ test('resolve falls back to web for unknown type', () => {
 });
 
 test('every parser builds a non-empty prompt', () => {
-  for (const type of ['book', 'paper', 'video', 'web']) {
+  for (const type of ['blog', 'book', 'paper', 'repo', 'video', 'web']) {
     const p = parsers.resolve(type);
     const prompt = p.buildPrompt('https://example.com/x', { tempDir: '/tmp', tempFile: '/tmp/in.txt', maxChunks: 4 });
     assert.ok(typeof prompt === 'string' && prompt.length > 50, p.name + ' prompt too short');
@@ -35,7 +35,7 @@ test('every parser builds a non-empty prompt', () => {
 });
 
 test('parser prompts embed input, tempFile and maxChunks', () => {
-  for (const type of ['book', 'paper', 'video', 'web']) {
+  for (const type of ['blog', 'book', 'paper', 'repo', 'video', 'web']) {
     const p = parsers.resolve(type);
     const prompt = p.buildPrompt('https://x.test/doc', { tempDir: '/t', maxChunks: 4 });
     assert.ok(prompt.includes('https://x.test/doc'), type + ': input missing');

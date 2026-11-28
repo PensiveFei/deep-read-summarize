@@ -1,18 +1,18 @@
 ---
 name: deep-read-summarize
-description: 深度精读并总结书籍/学术论文/视频/网页，输出带 YAML frontmatter 的标准 Markdown 笔记（2500+ 字，含术语表/批判分析/行动要点/延伸阅读；可直接放进 Obsidian / Logseq / 静态站点内容目录）
-whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTube/B站）或网页，要求深度精读、提取要点、生成可保存的 Markdown 精读笔记时（Obsidian / Logseq 仓库、静态站点内容目录、任意 Markdown 编辑器均可）
+description: 深度精读并总结书籍/学术论文/视频/博客文章/代码仓库/网页，输出带 YAML frontmatter 的标准 Markdown 笔记（2500+ 字，含术语表/批判分析/行动要点/延伸阅读；可直接放进 Obsidian / Logseq / 静态站点内容目录）
+whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTube/B站）、博客文章、代码仓库或网页，要求深度精读、提取要点、生成可保存的 Markdown 精读笔记时（Obsidian / Logseq 仓库、静态站点内容目录、任意 Markdown 编辑器均可）
 ---
 
 # deep-read-summarize — 深度精读与总结
 
-把一本书、一篇论文、一个视频或网页，精读成一篇结构化的标准 Markdown 笔记。
+把一本书、一篇论文、一个视频、一篇博客文章、一个代码仓库或网页，精读成一篇结构化的标准 Markdown 笔记。
 
 正文是通用 CommonMark（**无双链、无 callout、无编辑器专属语法**），所以 Obsidian（配合 Dataview）、Logseq、Jekyll / Hugo / Astro 的内容目录，以及任意 Markdown 编辑器都能直接使用。
 
 ## 能力
 
-- 书籍（PDF/EPUB/MOBI）、论文（arXiv/PDF/HTML）、视频（字幕优先，无字幕自动转写）、网页
+- 书籍（PDF/EPUB/MOBI）、论文（arXiv/PDF/HTML）、视频（字幕优先，无字幕自动转写）、单篇博客、代码仓库、网页
 - 长内容分块后由并行子代理精读（MapReduce），降低单个代理的上下文压力；超长资料仍受宿主上下文和工具读取上限约束
 - 获取/分块与质量校验的输出受 JSON Schema 约束，结构稳定、下游可解析
 - 分块计划与子代理数量受 `maxChunks` 强制约束（计划失控会顶穿单次调用时限）
@@ -22,8 +22,8 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 
 ## 输入
 
-用户提供：内容链接或本地文件路径。
-可选参数：`type`（auto/book/paper/video/web）、`options`（lengthMode / minWords / fastMode / maxChunks / readConcurrency / readRetries / resumeReads / parallelQuality / readCache / readCacheIdentity / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / cpuThreads / transcriptCache / outputDir / tempDir / frontmatter）。
+用户提供：内容链接、本地文件或本地 Git 仓库目录。博客请给出单篇文章；仓库按同一次提交选读代表文件，注明仓库相对路径与原始行号。
+可选参数：`type`（auto/book/paper/video/blog/repo/web）、`options`（lengthMode / minWords / fastMode / maxChunks / readConcurrency / readRetries / resumeReads / parallelQuality / readCache / readCacheIdentity / maxRetries / requireCitations / includeTimestamps / transcribe / whisperModel / language / device / cpuThreads / transcriptCache / outputDir / tempDir / frontmatter）。
 
 优先调用插件提供的 `deep_read_summarize` 工具，参数为 `{ input, type, options }`。如果当前宿主没有这个工具，按技能末尾提供的 meta / script / args 调用 `workflow` 工具；裸 workflow 无法在宿主侧读取文件做程序化引文核验，须如实报告未核验。
 
@@ -40,7 +40,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 
 1. **配置校验**：缺 input 或 type 非法 → 报 FATAL 终止
 2. **幂等检查（由你执行，脚本不做）**：脚本在沙箱内没有文件系统，写不了指纹记录。落盘前先看目标 `filePath` 是否已有同名笔记——已存在就问用户是覆盖还是跳过，别默默重跑一遍烧 token。（要在程序里做去重，可用插件导出的 `lib/cache.js`：fingerprint / hasProcessed / markProcessed。）
-3. **解析器选择**：按类型从 parsers 注册表选解析器（book/paper/video/web）。`auto` 对明确视频链接、arXiv 论文链接、电子书扩展名直接分流；同站的图文/频道/帮助页、PDF/未知网页/文本等模糊输入先轻量识别，不能固定当作网页。识别失败返回 `stage: "detect"`，再请用户显式指定类型
+3. **解析器选择**：按类型从 parsers 注册表选解析器（book/paper/video/blog/repo/web）。`auto` 对明确视频链接、arXiv 论文链接、电子书扩展名、GitHub 仓库及目录链接和常见博客单篇链接直接分流；同站的图文/频道/帮助页、PDF/未知网页/文本等模糊输入先轻量识别，不能固定当作网页。识别失败返回 `stage: "detect"`，再请用户显式指定类型
 4. **波次1 获取+分块**：解析器获取全文 → 写入本次独立的临时子目录 → 生成分块计划（JSON Schema 校验）。`tempDir` 是根目录，不要复用其他 `run-*` 任务的 input/audio/transcript；规范化全部区间，优先用已保存文本的字符数均衡工作量（兼顾相近的段落边界）；统计缺失或无效时按行数均衡，始终保持从第 1 行到 totalLines 的完整覆盖，不得截断原文
 5. **波次2 并行精读**：每个分块一个子代理深度精读（Map），最多 `readConcurrency` 个槽位同时工作（默认 3，可按宿主能力调整），空闲即领取下一块，输出保持分块顺序
 6. **波次3 合并成稿**：整合为完整笔记（Reduce），内嵌质量自检
@@ -63,7 +63,7 @@ whenToUse: 用户提供一本书、论文（arXiv/PDF）、视频链接（YouTub
 title: "《XXX》深度精读笔记"
 author: 作者
 year: 年份
-type: book | paper | video | web
+type: book | paper | video | blog | repo | web
 url: 来源
 tags: [精读, ...]
 created: 日期

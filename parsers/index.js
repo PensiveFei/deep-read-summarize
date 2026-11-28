@@ -17,8 +17,10 @@ const path = require("path");
 
 // 内置解析器（可被用户自定义解析器覆盖）
 const builtins = {
+  blog: require("./blog"),
   book: require("./book"),
   paper: require("./paper"),
+  repo: require("./repo"),
   video: require("./video"),
   web: require("./web")
 };

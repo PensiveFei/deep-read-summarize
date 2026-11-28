@@ -8,7 +8,7 @@ let failed = false;
 // 1. All JS files exist
 const files = [
   'workflow.js', 'parsers/index.js', 'parsers/book.js', 'parsers/paper.js',
-  'parsers/video.js', 'parsers/web.js', 'schemas/index.js'
+  'parsers/blog.js', 'parsers/repo.js', 'scripts/repo-snapshot.js', 'parsers/video.js', 'parsers/web.js', 'schemas/index.js'
 ];
 for (const f of files) {
   if (!fs.existsSync(f)) { console.error('MISSING:', f); failed = true; }
