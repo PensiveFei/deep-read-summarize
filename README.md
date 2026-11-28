@@ -9,7 +9,7 @@
 
 把论文、书籍、视频、博客文章、代码仓库或网页整理成一份**可以继续阅读、编辑和回查的 Markdown 笔记**。
 
-这是一个运行在 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 中的第三方精读插件。它尝试获取来源全文，将长内容分块阅读，再合并成带 YAML frontmatter 的结构化笔记。你可以把结果放进 Obsidian、Logseq 或其他 Markdown 工具。
+这是一个运行在 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) 中的第三方精读插件。它尝试获取来源全文，将长内容分块阅读，再合并成带 YAML frontmatter 的结构化笔记。你可以把结果放进 Obsidian、Notion,Logseq 或其他 Markdown 工具。
 
 [先看真实笔记](#看看笔记) · [安装与第一次使用](#开始使用) · [了解质量与限制](#结果能信到什么程度) · [常用配置](#常用配置)
 
